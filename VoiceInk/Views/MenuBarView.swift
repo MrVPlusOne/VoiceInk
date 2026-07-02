@@ -46,6 +46,10 @@ struct MenuBarView: View {
                 recorderUIManager.handleToggleRecorderPanelNotification()
             }
 
+            Button("AI Edit") {
+                UniversalAIEditManager.shared.show(engine: engine)
+            }
+
             Divider()
 
             Menu {

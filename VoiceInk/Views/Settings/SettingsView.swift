@@ -95,6 +95,13 @@ struct SettingsView: View {
                         .controlSize(.small)
                 }
 
+                LabeledContent("Universal AI Edit") {
+                    ShortcutRecorder(action: .universalAIEdit) {
+                        recordingShortcutManager.updateShortcutStatus()
+                    }
+                        .controlSize(.small)
+                }
+
                 LabeledContent("Cancel Recording") {
                     HStack(spacing: 8) {
                         ShortcutRecorder(
