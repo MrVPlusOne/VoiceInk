@@ -203,7 +203,6 @@ final class UniversalAIEditManager: ObservableObject {
             guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
                 return
             }
-            discardPendingHistoryRecordIfNeeded(note: String(localized: "Regenerated"))
             generatedInputSnapshot = nil
             phase = .generating
             statusText = String(localized: "Generating...")
@@ -222,6 +221,7 @@ final class UniversalAIEditManager: ObservableObject {
                 generatedText = result.text
                 lastResult = result
                 generatedInputSnapshot = requestInputSnapshot
+                discardPendingHistoryRecordIfNeeded(note: String(localized: "Regenerated"))
                 currentHistoryRecord = persistHistoryRecord(
                     result: result,
                     instruction: requestInstruction,
