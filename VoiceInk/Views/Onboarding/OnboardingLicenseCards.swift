@@ -83,8 +83,8 @@ struct OnboardingVerifiedLicenseCard: View {
 
     var body: some View {
         LicenseActiveSummaryCard(
-            title: "VoiceInk Pro",
-            subtitle: String(localized: "License active on this Mac."),
+            title: "Local Fork",
+            subtitle: String(localized: "License activation disabled for this fork."),
             licenseKey: licenseKey,
             didCopyLicenseKey: didCopyLicenseKey,
             onCopyLicenseKey: copyLicenseKey
