@@ -22,6 +22,8 @@ struct MarkdownContentView: View {
     var body: some View {
         Markdown(text)
             .markdownTheme(.basic)
+            .markdownImageProvider(DisabledMarkdownImageProvider())
+            .markdownInlineImageProvider(DisabledMarkdownInlineImageProvider())
             .markdownTextStyle {
                 FontSize(fontSize)
                 ForegroundColor(foregroundColor)
@@ -29,4 +31,20 @@ struct MarkdownContentView: View {
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: alignment)
     }
+}
+
+private struct DisabledMarkdownImageProvider: ImageProvider {
+    func makeImage(url _: URL?) -> some View {
+        EmptyView()
+    }
+}
+
+private struct DisabledMarkdownInlineImageProvider: InlineImageProvider {
+    func image(with _: URL, label _: String) async throws -> Image {
+        throw DisabledMarkdownImageError.remoteImagesDisabled
+    }
+}
+
+private enum DisabledMarkdownImageError: Error {
+    case remoteImagesDisabled
 }
