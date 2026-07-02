@@ -131,30 +131,61 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(visible == diagnostics)
     }
 
-    @Test func textDiffMarksInsertedAndRemovedText() {
-        let segments = UniversalAIEditDiffBuilder.segments(
-            original: "Please make this shorter.",
-            revised: "Please make this much shorter."
+    @Test func textDiffMarksSmallCharacterLevelEdit() {
+        let lines = UniversalAIEditDiffBuilder.lines(
+            original: "Please use color in the label.",
+            revised: "Please use colour in the label."
         )
 
-        #expect(segments.contains(.init(kind: .unchanged, text: "Please make this ")))
-        #expect(segments.contains(.init(kind: .inserted, text: "much ")))
-        #expect(segments.contains(.init(kind: .unchanged, text: "shorter.")))
-        #expect(!segments.contains { $0.kind == .removed })
+        let removedLine = lines.first { $0.kind == .removed }
+        let insertedLine = lines.first { $0.kind == .inserted }
+
+        #expect(removedLine?.spans.contains(.init(kind: .removed, text: " ")) == false)
+        #expect(insertedLine?.spans.contains(.init(kind: .inserted, text: "u")) == true)
+        #expect(insertedLine?.text == "Please use colour in the label.")
     }
 
-    @Test func textDiffFallsBackForLargeInputs() {
-        let original = Array(repeating: "alpha", count: 250).joined(separator: " ")
-        let revised = Array(repeating: "beta", count: 250).joined(separator: " ")
+    @Test func textDiffAlignsParagraphRewritesByLine() {
+        let original = """
+        I noticed that in some cases the diff does render more like a character-level diff, but I think the quality of the diff isn't as good as I'd hoped.
 
-        let segments = UniversalAIEditDiffBuilder.segments(
-            original: original,
-            revised: revised
-        )
+        I'd prefer a better diff algorithm, maybe using line-level alignment first to get a higher-quality and more readable diff.
+        """
+        let revised = """
+        I noticed that in some cases the changes do render more like character-level changes, but the quality still isn't as good as I'd hoped.
 
-        #expect(segments == [
-            .init(kind: .removed, text: original),
-            .init(kind: .inserted, text: revised)
-        ])
+        I'd prefer a better changes algorithm that uses line-level alignment first to produce a higher-quality and more readable preview.
+        """
+
+        let lines = UniversalAIEditDiffBuilder.lines(original: original, revised: revised)
+
+        #expect(lines.filter { $0.kind == .removed }.count == 2)
+        #expect(lines.filter { $0.kind == .inserted }.count == 2)
+        #expect(lines.contains { $0.kind == .unchanged && $0.text.isEmpty })
+        #expect(!lines.contains { $0.kind == .removed && $0.text == original })
+        #expect(!lines.contains { $0.kind == .inserted && $0.text == revised })
+        #expect(lines.contains { line in
+            line.kind == .inserted &&
+                line.spans.contains(.init(kind: .inserted, text: "changes"))
+        })
+    }
+
+    @Test func textDiffDoesNotCollapseLongRealisticRewriteIntoWholeDocumentBlocks() {
+        let originalParagraph = "I'm reaching out because my email to your MSR address bounced. My O-1A visa was approved in January, and that process went smoothly thanks to your help with the recommendation letter."
+        let revisedParagraph = "Hope you're doing well, and congratulations on the move to Google! I'm reaching out because my email to your MSR address bounced. My O-1A visa was approved in January, and the process went smoothly thanks in large part to your help with the recommendation letter."
+        let original = Array(repeating: originalParagraph, count: 8).joined(separator: "\n\n")
+        let revised = Array(repeating: revisedParagraph, count: 8).joined(separator: "\n\n")
+
+        let lines = UniversalAIEditDiffBuilder.lines(original: original, revised: revised)
+
+        #expect(lines.count > 2)
+        #expect(lines.filter { $0.kind == .removed }.count == 8)
+        #expect(lines.filter { $0.kind == .inserted }.count == 8)
+        #expect(!lines.contains { $0.kind == .removed && $0.text == original })
+        #expect(!lines.contains { $0.kind == .inserted && $0.text == revised })
+        #expect(lines.contains { line in
+            line.kind == .inserted &&
+                line.spans.contains { $0.kind == .inserted && $0.text.contains("congratulations") }
+        })
     }
 }

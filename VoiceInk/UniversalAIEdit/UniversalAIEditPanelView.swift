@@ -423,10 +423,7 @@ struct UniversalAIEditPanelView: View {
                 .foregroundColor(AppTheme.Text.muted)
                 .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
         } else if previewMode == .diff, canShowDiffToggle {
-            diffText
-                .font(.system(size: 13))
-                .lineSpacing(3)
-                .textSelection(.enabled)
+            diffPreview
         } else {
             Text(manager.generatedText)
                 .font(.system(size: 13))
@@ -442,30 +439,94 @@ struct UniversalAIEditPanelView: View {
             !manager.generatedText.isEmpty
     }
 
-    private var diffText: Text {
-        let segments = UniversalAIEditDiffBuilder.segments(
+    private var diffLines: [UniversalAIEditDiffLine] {
+        UniversalAIEditDiffBuilder.lines(
             original: manager.context?.selectedText ?? "",
             revised: manager.generatedText
         )
+    }
 
-        return segments.reduce(Text("")) { partial, segment in
-            partial + styledText(for: segment)
+    private var diffPreview: some View {
+        LazyVStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(diffLines.enumerated()), id: \.offset) { _, line in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(diffPrefix(for: line.kind))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(diffAccentColor(for: line.kind))
+                        .frame(width: 14, alignment: .trailing)
+
+                    Text(attributedText(for: line))
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(AppTheme.Text.primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(diffRowBackground(for: line.kind))
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func attributedText(for line: UniversalAIEditDiffLine) -> AttributedString {
+        var result = AttributedString()
+        let spans = line.spans.isEmpty || line.text.isEmpty
+            ? [UniversalAIEditDiffSpan(kind: .unchanged, text: " ")]
+            : line.spans
+
+        for span in spans {
+            var attributedSpan = AttributedString(span.text)
+            attributedSpan.foregroundColor = AppTheme.Text.primary
+
+            switch span.kind {
+            case .unchanged:
+                break
+            case .removed:
+                attributedSpan.backgroundColor = AppTheme.Status.error.opacity(0.22)
+            case .inserted:
+                attributedSpan.backgroundColor = AppTheme.Status.positive.opacity(0.22)
+            }
+
+            result += attributedSpan
+        }
+
+        return result
+    }
+
+    private func diffPrefix(for kind: UniversalAIEditDiffLine.Kind) -> String {
+        switch kind {
+        case .unchanged:
+            return " "
+        case .removed:
+            return "-"
+        case .inserted:
+            return "+"
         }
     }
 
-    private func styledText(for segment: UniversalAIEditDiffSegment) -> Text {
-        switch segment.kind {
+    private func diffAccentColor(for kind: UniversalAIEditDiffLine.Kind) -> Color {
+        switch kind {
         case .unchanged:
-            return Text(segment.text)
-                .foregroundColor(AppTheme.Text.primary)
+            return AppTheme.Text.muted
         case .removed:
-            return Text(segment.text)
-                .foregroundColor(AppTheme.Status.error)
-                .strikethrough(true, color: AppTheme.Status.error)
+            return AppTheme.Status.error
         case .inserted:
-            return Text(segment.text)
-                .foregroundColor(AppTheme.Status.success)
-                .bold()
+            return AppTheme.Status.positive
+        }
+    }
+
+    private func diffRowBackground(for kind: UniversalAIEditDiffLine.Kind) -> Color {
+        switch kind {
+        case .unchanged:
+            return AppTheme.Surface.clear
+        case .removed:
+            return AppTheme.Status.error.opacity(0.08)
+        case .inserted:
+            return AppTheme.Status.positive.opacity(0.08)
         }
     }
 

@@ -185,7 +185,7 @@ enum UniversalAIEditDiagnosticVisibility {
     }
 }
 
-struct UniversalAIEditDiffSegment: Equatable {
+struct UniversalAIEditDiffSpan: Equatable {
     enum Kind: Equatable {
         case unchanged
         case removed
@@ -196,38 +196,192 @@ struct UniversalAIEditDiffSegment: Equatable {
     let text: String
 }
 
+struct UniversalAIEditDiffLine: Equatable {
+    enum Kind: Equatable {
+        case unchanged
+        case removed
+        case inserted
+    }
+
+    let kind: Kind
+    let spans: [UniversalAIEditDiffSpan]
+
+    var text: String {
+        spans.map(\.text).joined()
+    }
+}
+
+typealias UniversalAIEditDiffSegment = UniversalAIEditDiffSpan
+
 enum UniversalAIEditDiffBuilder {
-    private static let maxMatrixCells = 40_000
+    private static let maxLineMatrixCells = 60_000
+    private static let maxInlineMatrixCells = 80_000
+    private static let minLinePairSimilarity = 0.12
 
     static func segments(original: String, revised: String) -> [UniversalAIEditDiffSegment] {
-        let oldTokens = tokens(in: original)
-        let newTokens = tokens(in: revised)
+        coalesced(lines(original: original, revised: revised).flatMap(\.spans))
+    }
 
-        if oldTokens == newTokens {
-            return revised.isEmpty ? [] : [.init(kind: .unchanged, text: revised)]
-        }
-        if oldTokens.isEmpty {
-            return newTokens.isEmpty ? [] : [.init(kind: .inserted, text: revised)]
-        }
-        if newTokens.isEmpty {
-            return [.init(kind: .removed, text: original)]
+    static func lines(original: String, revised: String) -> [UniversalAIEditDiffLine] {
+        let oldLines = splitLines(original)
+        let newLines = splitLines(revised)
+
+        if oldLines == newLines {
+            return oldLines.map { line in
+                .init(kind: .unchanged, spans: [.init(kind: .unchanged, text: line)])
+            }
         }
 
-        guard oldTokens.count * newTokens.count <= maxMatrixCells else {
-            return [
-                .init(kind: .removed, text: original),
-                .init(kind: .inserted, text: revised)
-            ]
+        guard !oldLines.isEmpty else {
+            return newLines.map { line in
+                .init(kind: .inserted, spans: [.init(kind: .inserted, text: line)])
+            }
         }
+
+        guard !newLines.isEmpty else {
+            return oldLines.map { line in
+                .init(kind: .removed, spans: [.init(kind: .removed, text: line)])
+            }
+        }
+
+        let matchingPairs = lcsPairs(oldLines, newLines, maxCells: maxLineMatrixCells) ?? []
+        var result: [UniversalAIEditDiffLine] = []
+        var oldIndex = 0
+        var newIndex = 0
+
+        for (matchedOldIndex, matchedNewIndex) in matchingPairs {
+            result.append(contentsOf: changedLines(
+                oldLines: Array(oldLines[oldIndex..<matchedOldIndex]),
+                newLines: Array(newLines[newIndex..<matchedNewIndex])
+            ))
+
+            result.append(.init(
+                kind: .unchanged,
+                spans: [.init(kind: .unchanged, text: oldLines[matchedOldIndex])]
+            ))
+            oldIndex = matchedOldIndex + 1
+            newIndex = matchedNewIndex + 1
+        }
+
+        result.append(contentsOf: changedLines(
+            oldLines: Array(oldLines[oldIndex...]),
+            newLines: Array(newLines[newIndex...])
+        ))
+
+        return result
+    }
+
+    private static func changedLines(oldLines: [String], newLines: [String]) -> [UniversalAIEditDiffLine] {
+        guard !oldLines.isEmpty || !newLines.isEmpty else { return [] }
+
+        var result: [UniversalAIEditDiffLine] = []
+        var newUsed = Set<Int>()
+
+        for oldLine in oldLines {
+            var bestNewIndex: Int?
+            var bestScore = 0.0
+
+            for (newIndex, newLine) in newLines.enumerated() where !newUsed.contains(newIndex) {
+                let score = lineSimilarity(oldLine, newLine)
+                if score > bestScore {
+                    bestScore = score
+                    bestNewIndex = newIndex
+                }
+            }
+
+            guard let bestNewIndex, bestScore >= minLinePairSimilarity else {
+                result.append(.init(
+                    kind: .removed,
+                    spans: [.init(kind: .removed, text: oldLine)]
+                ))
+                continue
+            }
+
+            for insertedIndex in newLines.indices where insertedIndex < bestNewIndex && !newUsed.contains(insertedIndex) {
+                result.append(.init(
+                    kind: .inserted,
+                    spans: [.init(kind: .inserted, text: newLines[insertedIndex])]
+                ))
+                newUsed.insert(insertedIndex)
+            }
+
+            let spans = inlineSpans(original: oldLine, revised: newLines[bestNewIndex])
+            result.append(.init(kind: .removed, spans: spans.removed))
+            result.append(.init(kind: .inserted, spans: spans.inserted))
+            newUsed.insert(bestNewIndex)
+        }
+
+        for (newIndex, newLine) in newLines.enumerated() where !newUsed.contains(newIndex) {
+            result.append(.init(
+                kind: .inserted,
+                spans: [.init(kind: .inserted, text: newLine)]
+            ))
+        }
+
+        return result
+    }
+
+    private static func inlineSpans(
+        original: String,
+        revised: String
+    ) -> (removed: [UniversalAIEditDiffSpan], inserted: [UniversalAIEditDiffSpan]) {
+        let oldTokens = inlineTokens(original)
+        let newTokens = inlineTokens(revised)
+
+        guard let pairs = lcsPairs(oldTokens, newTokens, maxCells: maxInlineMatrixCells) else {
+            return (
+                removed: [.init(kind: .removed, text: original)],
+                inserted: [.init(kind: .inserted, text: revised)]
+            )
+        }
+
+        var removed: [UniversalAIEditDiffSpan] = []
+        var inserted: [UniversalAIEditDiffSpan] = []
+        var oldIndex = 0
+        var newIndex = 0
+
+        for (matchedOldIndex, matchedNewIndex) in pairs {
+            appendSpan(
+                oldTokens[oldIndex..<matchedOldIndex].joined(),
+                kind: .removed,
+                to: &removed
+            )
+            appendSpan(
+                newTokens[newIndex..<matchedNewIndex].joined(),
+                kind: .inserted,
+                to: &inserted
+            )
+
+            let unchanged = oldTokens[matchedOldIndex]
+            appendSpan(unchanged, kind: .unchanged, to: &removed)
+            appendSpan(unchanged, kind: .unchanged, to: &inserted)
+
+            oldIndex = matchedOldIndex + 1
+            newIndex = matchedNewIndex + 1
+        }
+
+        appendSpan(oldTokens[oldIndex...].joined(), kind: .removed, to: &removed)
+        appendSpan(newTokens[newIndex...].joined(), kind: .inserted, to: &inserted)
+
+        return (coalesced(removed), coalesced(inserted))
+    }
+
+    private static func lcsPairs<T: Equatable>(
+        _ oldValues: [T],
+        _ newValues: [T],
+        maxCells: Int
+    ) -> [(Int, Int)]? {
+        guard !oldValues.isEmpty, !newValues.isEmpty else { return [] }
+        guard oldValues.count * newValues.count <= maxCells else { return nil }
 
         var table = Array(
-            repeating: Array(repeating: 0, count: newTokens.count + 1),
-            count: oldTokens.count + 1
+            repeating: Array(repeating: 0, count: newValues.count + 1),
+            count: oldValues.count + 1
         )
 
-        for oldIndex in stride(from: oldTokens.count - 1, through: 0, by: -1) {
-            for newIndex in stride(from: newTokens.count - 1, through: 0, by: -1) {
-                if oldTokens[oldIndex] == newTokens[newIndex] {
+        for oldIndex in stride(from: oldValues.count - 1, through: 0, by: -1) {
+            for newIndex in stride(from: newValues.count - 1, through: 0, by: -1) {
+                if oldValues[oldIndex] == newValues[newIndex] {
                     table[oldIndex][newIndex] = table[oldIndex + 1][newIndex + 1] + 1
                 } else {
                     table[oldIndex][newIndex] = max(
@@ -238,54 +392,51 @@ enum UniversalAIEditDiffBuilder {
             }
         }
 
+        var pairs: [(Int, Int)] = []
         var oldIndex = 0
         var newIndex = 0
-        var rawSegments: [UniversalAIEditDiffSegment] = []
 
-        while oldIndex < oldTokens.count && newIndex < newTokens.count {
-            if oldTokens[oldIndex] == newTokens[newIndex] {
-                rawSegments.append(.init(kind: .unchanged, text: oldTokens[oldIndex]))
+        while oldIndex < oldValues.count && newIndex < newValues.count {
+            if oldValues[oldIndex] == newValues[newIndex] {
+                pairs.append((oldIndex, newIndex))
                 oldIndex += 1
                 newIndex += 1
             } else if table[oldIndex + 1][newIndex] >= table[oldIndex][newIndex + 1] {
-                rawSegments.append(.init(kind: .removed, text: oldTokens[oldIndex]))
                 oldIndex += 1
             } else {
-                rawSegments.append(.init(kind: .inserted, text: newTokens[newIndex]))
                 newIndex += 1
             }
         }
 
-        while oldIndex < oldTokens.count {
-            rawSegments.append(.init(kind: .removed, text: oldTokens[oldIndex]))
-            oldIndex += 1
-        }
-
-        while newIndex < newTokens.count {
-            rawSegments.append(.init(kind: .inserted, text: newTokens[newIndex]))
-            newIndex += 1
-        }
-
-        return coalesced(rawSegments)
+        return pairs
     }
 
-    private static func tokens(in text: String) -> [String] {
+    private static func splitLines(_ text: String) -> [String] {
+        guard !text.isEmpty else { return [] }
+        return text
+            .components(separatedBy: .newlines)
+            .dropTrailingEmptyLine()
+    }
+
+    private static func inlineTokens(_ text: String) -> [String] {
+        guard text.count > 280 else {
+            return text.map(String.init)
+        }
+
         var result: [String] = []
         var current = ""
-        var currentIsWhitespace: Bool?
+        var currentKind: TokenKind?
 
         for character in text {
-            let isWhitespace = character.unicodeScalars.allSatisfy {
-                CharacterSet.whitespacesAndNewlines.contains($0)
-            }
+            let kind = TokenKind(character)
 
-            if let currentIsWhitespace, currentIsWhitespace != isWhitespace {
+            if let currentKind, currentKind != kind {
                 result.append(current)
                 current = String(character)
             } else {
                 current.append(character)
             }
-            currentIsWhitespace = isWhitespace
+            currentKind = kind
         }
 
         if !current.isEmpty {
@@ -295,8 +446,37 @@ enum UniversalAIEditDiffBuilder {
         return result
     }
 
-    private static func coalesced(_ segments: [UniversalAIEditDiffSegment]) -> [UniversalAIEditDiffSegment] {
-        var result: [UniversalAIEditDiffSegment] = []
+    private static func lineSimilarity(_ oldLine: String, _ newLine: String) -> Double {
+        guard !oldLine.isEmpty || !newLine.isEmpty else { return 1 }
+        guard !oldLine.isEmpty, !newLine.isEmpty else { return 0 }
+
+        let oldTokens = inlineTokens(oldLine.lowercased())
+        let newTokens = inlineTokens(newLine.lowercased())
+        guard let pairs = lcsPairs(oldTokens, newTokens, maxCells: maxInlineMatrixCells) else {
+            let oldSet = Set(oldTokens.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+            let newSet = Set(newTokens.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+            guard !oldSet.isEmpty || !newSet.isEmpty else { return 0 }
+            return Double(oldSet.intersection(newSet).count) / Double(max(oldSet.count, newSet.count))
+        }
+
+        return Double(pairs.count) / Double(max(oldTokens.count, newTokens.count))
+    }
+
+    private static func appendSpan(
+        _ text: String,
+        kind: UniversalAIEditDiffSpan.Kind,
+        to spans: inout [UniversalAIEditDiffSpan]
+    ) {
+        guard !text.isEmpty else { return }
+        if let last = spans.last, last.kind == kind {
+            spans[spans.count - 1] = .init(kind: kind, text: last.text + text)
+        } else {
+            spans.append(.init(kind: kind, text: text))
+        }
+    }
+
+    private static func coalesced(_ segments: [UniversalAIEditDiffSpan]) -> [UniversalAIEditDiffSpan] {
+        var result: [UniversalAIEditDiffSpan] = []
 
         for segment in segments where !segment.text.isEmpty {
             if let last = result.last, last.kind == segment.kind {
@@ -307,6 +487,29 @@ enum UniversalAIEditDiffBuilder {
         }
 
         return result
+    }
+
+    private enum TokenKind: Equatable {
+        case whitespace
+        case word
+        case punctuation
+
+        init(_ character: Character) {
+            if character.unicodeScalars.allSatisfy({ CharacterSet.whitespacesAndNewlines.contains($0) }) {
+                self = .whitespace
+            } else if character.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }) {
+                self = .word
+            } else {
+                self = .punctuation
+            }
+        }
+    }
+}
+
+private extension Array where Element == String {
+    func dropTrailingEmptyLine() -> [String] {
+        guard last == "" else { return self }
+        return Array(dropLast())
     }
 }
 
