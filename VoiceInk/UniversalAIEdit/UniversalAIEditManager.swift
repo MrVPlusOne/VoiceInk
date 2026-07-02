@@ -82,8 +82,28 @@ final class UniversalAIEditManager: ObservableObject {
         )
     }
 
+    var composerPrimaryAction: UniversalAIEditComposerPrimaryAction {
+        UniversalAIEditFlow.composerPrimaryAction(
+            phase: phase,
+            isVoiceRecording: isVoiceRecording,
+            hasGeneratedText: hasGeneratedText,
+            isResultFresh: isResultFresh
+        )
+    }
+
     var canPerformPrimaryAction: Bool {
         switch primaryAction {
+        case .generate:
+            return canGenerate
+        case .apply:
+            return canApply
+        }
+    }
+
+    var canPerformComposerPrimaryAction: Bool {
+        switch composerPrimaryAction {
+        case .stopRecording:
+            return isVoiceRecording && canToggleVoiceInstruction
         case .generate:
             return canGenerate
         case .apply:
@@ -153,6 +173,15 @@ final class UniversalAIEditManager: ObservableObject {
             generate()
         case .apply:
             applyResult()
+        }
+    }
+
+    func performComposerPrimaryAction() {
+        switch composerPrimaryAction {
+        case .stopRecording:
+            toggleVoiceInstruction()
+        case .generate, .apply:
+            performPrimaryAction()
         }
     }
 

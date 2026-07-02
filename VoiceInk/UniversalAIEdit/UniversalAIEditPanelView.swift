@@ -16,11 +16,8 @@ struct UniversalAIEditPanelView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 compactContextSummary
-                instructionEditor
-                voiceRecordingStatus
-                statusArea
                 previewArea
-                actionBar
+                composerArea
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -296,121 +293,117 @@ struct UniversalAIEditPanelView: View {
             )
     }
 
-    private var instructionEditor: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text("Instruction")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(AppTheme.Text.secondary)
+    private var composerArea: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            composerHeaderRow
 
-                Spacer()
+            HStack(alignment: .bottom, spacing: 10) {
+                instructionTextEditor
 
-                Button {
-                    manager.toggleVoiceInstruction()
-                } label: {
-                    Label(
-                        manager.isVoiceRecording ? "Stop" : "Voice",
-                        systemImage: manager.isVoiceRecording ? "stop.fill" : "mic.fill"
-                    )
-                    .font(.system(size: 12, weight: .medium))
+                VStack(alignment: .trailing, spacing: 8) {
+                    secondaryActionCluster
+                    composerPrimaryButton
                 }
-                .disabled(!manager.canToggleVoiceInstruction)
+                .frame(width: 238, alignment: .trailing)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.Surface.control.opacity(0.72))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppTheme.Border.control.opacity(0.55), lineWidth: 1)
+        )
+    }
 
-                if manager.canRedoVoiceInstruction {
-                    Button {
-                        manager.redoVoiceInstruction()
-                    } label: {
-                        Label("Redo Voice", systemImage: "arrow.counterclockwise")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear the current instruction and record it again")
-                }
+    private var composerHeaderRow: some View {
+        HStack(spacing: 8) {
+            Text("Instruction")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(AppTheme.Text.secondary)
+
+            if manager.isVoiceRecording {
+                recordingStatusPill
+            } else {
+                composerStatusPill
             }
 
-            TextEditor(text: $manager.instruction)
-                .font(.system(size: 14))
-                .focused($instructionFocused)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(height: instructionEditorHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(AppTheme.Surface.control)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .stroke(instructionFocused ? AppTheme.Accent.border : AppTheme.Border.control.opacity(0.45), lineWidth: 1)
-                )
+            Spacer(minLength: 8)
         }
+        .frame(minHeight: 24)
+    }
+
+    private var instructionTextEditor: some View {
+        TextEditor(text: $manager.instruction)
+            .font(.system(size: 14))
+            .focused($instructionFocused)
+            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(height: instructionEditorHeight)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(AppTheme.Surface.window)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(instructionFocused ? AppTheme.Accent.border : AppTheme.Border.control.opacity(0.55), lineWidth: 1)
+            )
     }
 
     private var instructionEditorHeight: CGFloat {
         let text = manager.instruction
         let lines = text
             .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { max(1, Int(ceil(Double($0.count) / 78.0))) }
+            .map { max(1, Int(ceil(Double($0.count) / 62.0))) }
             .reduce(0, +)
         let resolvedLines = max(1, lines)
-        return min(118, max(44, CGFloat(resolvedLines) * 20 + 20))
+        return min(96, max(40, CGFloat(resolvedLines) * 20 + 18))
     }
 
     @ViewBuilder
-    private var voiceRecordingStatus: some View {
-        if manager.isVoiceRecording {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(AppTheme.Accent.primary)
-                    .frame(width: 8, height: 8)
-                    .opacity(0.9)
+    private var recordingStatusPill: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(AppTheme.Accent.primary)
+                .frame(width: 7, height: 7)
+                .opacity(0.9)
 
-                Text("Recording")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(AppTheme.Accent.primary)
+            Text("Recording")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(AppTheme.Accent.primary)
 
-                UniversalAIEditVoiceWaveform(
-                    currentLevel: manager.voiceMeterLevel,
-                    samples: manager.voiceMeterSamples
-                )
-
-                Spacer()
-
-                Button {
-                    manager.cancelVoiceInstructionAndReturnToEditing()
-                } label: {
-                    Label("Cancel", systemImage: "xmark")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .help("Cancel voice input")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(AppTheme.Accent.fill.opacity(0.65))
+            UniversalAIEditVoiceWaveform(
+                currentLevel: manager.voiceMeterLevel,
+                samples: manager.voiceMeterSamples
             )
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(AppTheme.Accent.fill.opacity(0.72))
+        )
     }
 
     @ViewBuilder
-    private var statusArea: some View {
+    private var composerStatusPill: some View {
         if shouldShowStatus, let status = manager.statusText {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Circle()
                     .fill(statusColor)
-                    .frame(width: 7, height: 7)
+                    .frame(width: 6, height: 6)
                 Text(status)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(statusColor)
-                    .lineLimit(2)
-                Spacer()
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                Capsule()
                     .fill(statusColor.opacity(0.10))
             )
         }
@@ -609,35 +602,68 @@ struct UniversalAIEditPanelView: View {
         }
     }
 
-    private var actionBar: some View {
-        HStack(spacing: 10) {
-            Button("Discard") {
-                manager.discardPreview()
-            }
-            .disabled(!manager.canDiscardPreview)
-
-            Spacer()
-
-            Button("Copy") {
-                manager.copyResult()
-            }
-            .disabled(!manager.canCopyResult)
-
-            if manager.canRegenerate {
-                Button("Regenerate") {
-                    manager.generate()
+    @ViewBuilder
+    private var secondaryActionCluster: some View {
+        HStack(spacing: 8) {
+            if manager.isVoiceRecording {
+                Button {
+                    manager.cancelVoiceInstructionAndReturnToEditing()
+                } label: {
+                    Label("Cancel", systemImage: "xmark")
                 }
-                .disabled(!manager.canRegenerate)
-            }
+                .help("Cancel voice input")
+            } else {
+                Button {
+                    manager.toggleVoiceInstruction()
+                } label: {
+                    Label("Voice", systemImage: "mic.fill")
+                }
+                .disabled(!manager.canToggleVoiceInstruction)
 
-            Button(manager.primaryAction.title) {
-                manager.performPrimaryAction()
+                if manager.canRedoVoiceInstruction {
+                    Button {
+                        manager.redoVoiceInstruction()
+                    } label: {
+                        Label("Redo Voice", systemImage: "arrow.counterclockwise")
+                    }
+                    .help("Clear the current instruction and record it again")
+                }
+
+                if manager.canCopyResult {
+                    Button("Copy") {
+                        manager.copyResult()
+                    }
+                }
+
+                if manager.canRegenerate {
+                    Button("Regenerate") {
+                        manager.generate()
+                    }
+                    .disabled(!manager.canRegenerate)
+                }
             }
-            .keyboardShortcut(.return, modifiers: [])
-            .disabled(!manager.canPerformPrimaryAction)
-            .frame(width: 108)
-            .buttonStyle(.borderedProminent)
         }
+        .font(.system(size: 12, weight: .medium))
+        .controlSize(.small)
+        .lineLimit(1)
+    }
+
+    private var composerPrimaryButton: some View {
+        Button {
+            manager.performComposerPrimaryAction()
+        } label: {
+            if let systemImage = manager.composerPrimaryAction.systemImage {
+                Label(manager.composerPrimaryAction.title, systemImage: systemImage)
+                    .frame(maxWidth: .infinity)
+            } else {
+                Text(manager.composerPrimaryAction.title)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .keyboardShortcut(.return, modifiers: [])
+        .disabled(!manager.canPerformComposerPrimaryAction)
+        .frame(width: 108)
+        .buttonStyle(.borderedProminent)
     }
 }
 

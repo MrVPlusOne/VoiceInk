@@ -59,6 +59,32 @@ enum UniversalAIEditPrimaryAction: Equatable {
     }
 }
 
+enum UniversalAIEditComposerPrimaryAction: Equatable {
+    case stopRecording
+    case generate
+    case apply
+
+    var title: String {
+        switch self {
+        case .stopRecording:
+            return String(localized: "Stop")
+        case .generate:
+            return String(localized: "Generate")
+        case .apply:
+            return String(localized: "Apply")
+        }
+    }
+
+    var systemImage: String? {
+        switch self {
+        case .stopRecording:
+            return "stop.fill"
+        case .generate, .apply:
+            return nil
+        }
+    }
+}
+
 enum UniversalAIEditFlow {
     static func canApply(
         hasGeneratedText: Bool,
@@ -75,6 +101,24 @@ enum UniversalAIEditFlow {
         isResultFresh: Bool
     ) -> UniversalAIEditPrimaryAction {
         hasGeneratedText && isResultFresh ? .apply : .generate
+    }
+
+    static func composerPrimaryAction(
+        phase: UniversalAIEditPhase,
+        isVoiceRecording: Bool,
+        hasGeneratedText: Bool,
+        isResultFresh: Bool
+    ) -> UniversalAIEditComposerPrimaryAction {
+        if isVoiceRecording, phase == .listening {
+            return .stopRecording
+        }
+
+        switch primaryAction(hasGeneratedText: hasGeneratedText, isResultFresh: isResultFresh) {
+        case .generate:
+            return .generate
+        case .apply:
+            return .apply
+        }
     }
 
     static func canToggleVoiceInstruction(
