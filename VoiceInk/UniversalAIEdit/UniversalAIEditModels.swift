@@ -45,6 +45,45 @@ enum UniversalAIEditPhase: Equatable {
     }
 }
 
+enum UniversalAIEditPrimaryAction: Equatable {
+    case generate
+    case apply
+
+    var title: String {
+        switch self {
+        case .generate:
+            return String(localized: "Generate")
+        case .apply:
+            return String(localized: "Apply")
+        }
+    }
+}
+
+enum UniversalAIEditFlow {
+    static func primaryAction(
+        hasGeneratedText: Bool,
+        isResultFresh: Bool
+    ) -> UniversalAIEditPrimaryAction {
+        hasGeneratedText && isResultFresh ? .apply : .generate
+    }
+}
+
+struct UniversalAIEditInputSnapshot: Equatable {
+    let instruction: String
+    let mode: UniversalAIEditMode
+    let context: UniversalAIEditContext
+
+    init(
+        instruction: String,
+        mode: UniversalAIEditMode,
+        context: UniversalAIEditContext
+    ) {
+        self.instruction = instruction
+        self.mode = mode
+        self.context = context
+    }
+}
+
 struct UniversalAIEditTargetSnapshot: Equatable {
     let appName: String?
     let bundleIdentifier: String?

@@ -16,6 +16,7 @@ final class UniversalAIEditManager: ObservableObject {
     @Published private(set) var isVoiceRecording = false
     @Published private(set) var voiceMeterLevel: Double = 0
     @Published private(set) var voiceMeterSamples: [Double] = []
+    @Published private(set) var shouldFocusInstructionOnAppear = true
 
     private let contextCaptureService = UniversalAIEditContextCaptureService()
     private let editService = UniversalAIEditService()
@@ -27,6 +28,7 @@ final class UniversalAIEditManager: ObservableObject {
     private weak var engine: VoiceInkEngine?
     private var targetApp: NSRunningApplication?
     private var currentHistoryRecord: AIEditHistoryRecord?
+    private var generatedInputSnapshot: UniversalAIEditInputSnapshot?
     private var panelSessionID: UUID?
     private var activeGenerationID: UUID?
 
@@ -37,7 +39,75 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     var canApply: Bool {
+        !generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !phase.isBusy &&
+            isResultFresh
+    }
+
+    var canCopyResult: Bool {
         !generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !phase.isBusy
+    }
+
+    var canDiscardPreview: Bool {
+        !generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !phase.isBusy
+    }
+
+    var canRegenerate: Bool {
+        canGenerate &&
+            !generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            isResultFresh
+    }
+
+    var canRedoVoiceInstruction: Bool {
+        !phase.isBusy &&
+            !isVoiceRecording &&
+            engine != nil &&
+            !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var primaryAction: UniversalAIEditPrimaryAction {
+        UniversalAIEditFlow.primaryAction(
+            hasGeneratedText: hasGeneratedText,
+            isResultFresh: isResultFresh
+        )
+    }
+
+    var canPerformPrimaryAction: Bool {
+        switch primaryAction {
+        case .generate:
+            return canGenerate
+        case .apply:
+            return canApply
+        }
+    }
+
+    var isResultFresh: Bool {
+        guard !generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let generatedInputSnapshot,
+              let currentInputSnapshot else {
+            return false
+        }
+
+        return generatedInputSnapshot == currentInputSnapshot
+    }
+
+    var isResultStale: Bool {
+        hasGeneratedText && !isResultFresh
+    }
+
+    private var hasGeneratedText: Bool {
+        !generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var currentInputSnapshot: UniversalAIEditInputSnapshot? {
+        guard let context else { return nil }
+
+        return UniversalAIEditInputSnapshot(
+            instruction: instruction,
+            mode: mode,
+            context: context
+        )
     }
 
     func show(engine: VoiceInkEngine) {
@@ -50,6 +120,30 @@ final class UniversalAIEditManager: ObservableObject {
         self.engine = engine
         Task { @MainActor in
             await openPanel(engine: engine)
+        }
+    }
+
+    func performCommand(engine: VoiceInkEngine) {
+        guard phase != .capturing else { return }
+
+        if panel?.isVisible == true {
+            panel?.makeKeyAndOrderFront(nil)
+            performPrimaryCommandStep()
+            return
+        }
+
+        self.engine = engine
+        Task { @MainActor in
+            await openPanel(engine: engine, startVoiceRecording: true)
+        }
+    }
+
+    func performPrimaryAction() {
+        switch primaryAction {
+        case .generate:
+            generate()
+        case .apply:
+            applyResult()
         }
     }
 
@@ -70,11 +164,13 @@ final class UniversalAIEditManager: ObservableObject {
         discardPendingHistoryRecordIfNeeded(note: String(localized: "Preview discarded"))
         generatedText = ""
         lastResult = nil
+        generatedInputSnapshot = nil
         phase = .ready
         statusText = nil
     }
 
     func generate() {
+        guard canGenerate else { return }
         guard let engine,
               let enhancementService = engine.enhancementService,
               let context else {
@@ -88,6 +184,11 @@ final class UniversalAIEditManager: ObservableObject {
         let requestInstruction = instruction
         let requestMode = mode
         let requestContext = context
+        let requestInputSnapshot = UniversalAIEditInputSnapshot(
+            instruction: requestInstruction,
+            mode: requestMode,
+            context: requestContext
+        )
 
         Task { @MainActor in
             guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
@@ -110,6 +211,7 @@ final class UniversalAIEditManager: ObservableObject {
                 activeGenerationID = nil
                 generatedText = result.text
                 lastResult = result
+                generatedInputSnapshot = requestInputSnapshot
                 currentHistoryRecord = persistHistoryRecord(
                     result: result,
                     instruction: requestInstruction,
@@ -129,7 +231,7 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     func copyResult() {
-        guard !generatedText.isEmpty else { return }
+        guard canCopyResult else { return }
         _ = ClipboardManager.copyToClipboard(generatedText)
         updateCurrentHistoryRecord(outcome: .copied, clearCurrentRecord: false)
         NotificationManager.shared.showNotification(
@@ -139,7 +241,7 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     func applyResult() {
-        guard !generatedText.isEmpty else { return }
+        guard canApply else { return }
 
         Task { @MainActor in
             phase = .applying
@@ -189,10 +291,6 @@ final class UniversalAIEditManager: ObservableObject {
             let pasteResult = await CursorPaster.pasteAtCursorAndWaitUntilPosted(text)
             if pasteResult.didPostPasteCommand {
                 updateCurrentHistoryRecord(outcome: .applied)
-                NotificationManager.shared.showNotification(
-                    title: String(localized: "AI Edit applied"),
-                    type: .success
-                )
             } else {
                 _ = ClipboardManager.copyToClipboard(text)
                 updateCurrentHistoryRecord(outcome: .copied, note: UniversalAIEditError.pasteUnavailable.localizedDescription)
@@ -202,6 +300,39 @@ final class UniversalAIEditManager: ObservableObject {
                     duration: 5.0
                 )
             }
+        }
+    }
+
+    func cancelVoiceInstructionForManualInput() {
+        guard isVoiceRecording else { return }
+
+        Task { @MainActor in
+            await cancelVoiceInstruction()
+            phase = .ready
+            statusText = nil
+        }
+    }
+
+    func cancelVoiceInstructionAndReturnToEditing() {
+        guard isVoiceRecording else { return }
+
+        Task { @MainActor in
+            await cancelVoiceInstruction()
+            phase = .ready
+            statusText = nil
+        }
+    }
+
+    func redoVoiceInstruction() {
+        guard canRedoVoiceInstruction else { return }
+
+        Task { @MainActor in
+            instruction = ""
+            generatedText = ""
+            lastResult = nil
+            generatedInputSnapshot = nil
+            statusText = nil
+            await startVoiceInstruction()
         }
     }
 
@@ -215,11 +346,33 @@ final class UniversalAIEditManager: ObservableObject {
         }
     }
 
-    private func openPanel(engine: VoiceInkEngine) async {
+    private func performPrimaryCommandStep() {
+        switch phase {
+        case .idle, .capturing, .transcribingInstruction, .generating, .applying:
+            return
+        case .listening:
+            Task { @MainActor in
+                await stopVoiceInstruction()
+            }
+        case .ready, .failed:
+            if canGenerate {
+                generate()
+            } else {
+                Task { @MainActor in
+                    await startVoiceInstruction()
+                }
+            }
+        case .preview:
+            performPrimaryAction()
+        }
+    }
+
+    private func openPanel(engine: VoiceInkEngine, startVoiceRecording: Bool = false) async {
         phase = .capturing
         statusText = String(localized: "Capturing context...")
         generatedText = ""
         lastResult = nil
+        generatedInputSnapshot = nil
         currentHistoryRecord = nil
         panelSessionID = UUID()
         activeGenerationID = nil
@@ -233,7 +386,10 @@ final class UniversalAIEditManager: ObservableObject {
         }
         statusText = nil
         phase = .ready
-        showPanel()
+        showPanel(autoFocusInstruction: !startVoiceRecording)
+        if startVoiceRecording {
+            await startVoiceInstruction()
+        }
     }
 
     private func resolvedEnhancementConfiguration(engine: VoiceInkEngine) -> EnhancementRuntimeConfiguration? {
@@ -248,7 +404,8 @@ final class UniversalAIEditManager: ObservableObject {
         )
     }
 
-    private func showPanel() {
+    private func showPanel(autoFocusInstruction: Bool) {
+        shouldFocusInstructionOnAppear = autoFocusInstruction
         let size = UniversalAIEditPanelView.preferredContentSize
         let newPanel = UniversalAIEditPanel(manager: self, size: size)
         let view = UniversalAIEditPanelView(manager: self)
@@ -271,6 +428,8 @@ final class UniversalAIEditManager: ObservableObject {
         if reactivateTarget {
             targetApp?.activate(options: [])
         }
+        generatedInputSnapshot = nil
+        shouldFocusInstructionOnAppear = true
         phase = .idle
         isVoiceRecording = false
         stopVoiceMetering(reset: true)

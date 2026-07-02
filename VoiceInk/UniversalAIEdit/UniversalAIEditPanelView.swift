@@ -36,7 +36,14 @@ struct UniversalAIEditPanelView: View {
                 .stroke(AppTheme.Border.card, lineWidth: 1)
         )
         .onAppear {
-            instructionFocused = true
+            instructionFocused = manager.shouldFocusInstructionOnAppear
+        }
+        .onChange(of: instructionFocused) { _, isFocused in
+            guard isFocused else { return }
+            manager.cancelVoiceInstructionForManualInput()
+        }
+        .onChange(of: manager.instruction) { _, _ in
+            manager.cancelVoiceInstructionForManualInput()
         }
         .sheet(isPresented: $isScreenContextInspectorPresented) {
             if let screenText = manager.context?.screenText, !screenText.isEmpty {
@@ -308,6 +315,17 @@ struct UniversalAIEditPanelView: View {
                     .font(.system(size: 12, weight: .medium))
                 }
                 .disabled(manager.phase == .generating || manager.phase == .applying)
+
+                if manager.canRedoVoiceInstruction {
+                    Button {
+                        manager.redoVoiceInstruction()
+                    } label: {
+                        Label("Redo Voice", systemImage: "arrow.counterclockwise")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear the current instruction and record it again")
+                }
             }
 
             TextEditor(text: $manager.instruction)
@@ -357,6 +375,15 @@ struct UniversalAIEditPanelView: View {
                 )
 
                 Spacer()
+
+                Button {
+                    manager.cancelVoiceInstructionAndReturnToEditing()
+                } label: {
+                    Label("Cancel", systemImage: "xmark")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .help("Cancel voice input")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -421,6 +448,19 @@ struct UniversalAIEditPanelView: View {
                         .font(.system(size: 11))
                         .foregroundColor(AppTheme.Text.muted)
                         .lineLimit(1)
+                }
+
+                if manager.isResultStale {
+                    Label("Stale", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(AppTheme.Status.warningStrong)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.Status.warningStrong.opacity(0.12))
+                        )
+                        .help("Generate again before applying")
                 }
 
                 Spacer()
@@ -574,26 +614,29 @@ struct UniversalAIEditPanelView: View {
             Button("Discard") {
                 manager.discardPreview()
             }
-            .disabled(manager.generatedText.isEmpty || manager.phase.isBusy)
+            .disabled(!manager.canDiscardPreview)
 
             Spacer()
 
             Button("Copy") {
                 manager.copyResult()
             }
-            .disabled(manager.generatedText.isEmpty || manager.phase.isBusy)
+            .disabled(!manager.canCopyResult)
 
-            Button("Generate") {
-                manager.generate()
+            if manager.canRegenerate {
+                Button("Regenerate") {
+                    manager.generate()
+                }
+                .disabled(!manager.canRegenerate)
             }
-            .keyboardShortcut(.return, modifiers: .command)
-            .disabled(!manager.canGenerate)
 
-            Button("Apply") {
-                manager.applyResult()
+            Button(manager.primaryAction.title) {
+                manager.performPrimaryAction()
             }
             .keyboardShortcut(.return, modifiers: [])
-            .disabled(!manager.canApply)
+            .disabled(!manager.canPerformPrimaryAction)
+            .frame(width: 108)
+            .buttonStyle(.borderedProminent)
         }
     }
 }

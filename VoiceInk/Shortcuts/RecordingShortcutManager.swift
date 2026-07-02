@@ -290,7 +290,7 @@ class RecordingShortcutManager: ObservableObject {
         case .quickAddToDictionary:
             DictionaryQuickAddManager.shared.toggle(modelContainer: engine.modelContext.container)
         case .universalAIEdit:
-            UniversalAIEditManager.shared.show(engine: engine)
+            UniversalAIEditManager.shared.performCommand(engine: engine)
         default:
             break
         }

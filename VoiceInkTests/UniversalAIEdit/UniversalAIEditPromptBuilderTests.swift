@@ -131,6 +131,62 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(visible == diagnostics)
     }
 
+    @Test func primaryActionUsesApplyOnlyForFreshGeneratedResult() {
+        #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: false, isResultFresh: false) == .generate)
+        #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: true, isResultFresh: false) == .generate)
+        #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: true, isResultFresh: true) == .apply)
+    }
+
+    @Test func generatedInputSnapshotChangesWhenInstructionModeOrContextChanges() {
+        let context = UniversalAIEditContext(
+            capturedAt: Date(timeIntervalSince1970: 0),
+            target: UniversalAIEditTargetSnapshot(
+                appName: "Notes",
+                bundleIdentifier: "com.apple.Notes",
+                processIdentifier: 101,
+                focusedWindowTitle: "Ideas",
+                focusedWindowFrame: nil
+            ),
+            selectedText: "Original",
+            clipboardText: nil,
+            screenText: "Application: Notes",
+            diagnostics: []
+        )
+        let generatedSnapshot = UniversalAIEditInputSnapshot(
+            instruction: "Make it shorter",
+            mode: .replaceSelection,
+            context: context
+        )
+
+        #expect(generatedSnapshot == UniversalAIEditInputSnapshot(
+            instruction: "Make it shorter",
+            mode: .replaceSelection,
+            context: context
+        ))
+        #expect(generatedSnapshot != UniversalAIEditInputSnapshot(
+            instruction: "Make it friendlier",
+            mode: .replaceSelection,
+            context: context
+        ))
+        #expect(generatedSnapshot != UniversalAIEditInputSnapshot(
+            instruction: "Make it shorter",
+            mode: .insertNew,
+            context: context
+        ))
+        #expect(generatedSnapshot != UniversalAIEditInputSnapshot(
+            instruction: "Make it shorter",
+            mode: .replaceSelection,
+            context: UniversalAIEditContext(
+                capturedAt: Date(timeIntervalSince1970: 0),
+                target: context.target,
+                selectedText: "Different selection",
+                clipboardText: nil,
+                screenText: "Application: Notes",
+                diagnostics: []
+            )
+        ))
+    }
+
     @Test func textDiffMarksSmallCharacterLevelEdit() {
         let lines = UniversalAIEditDiffBuilder.lines(
             original: "Please use color in the label.",
