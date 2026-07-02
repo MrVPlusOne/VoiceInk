@@ -9,14 +9,15 @@ struct UniversalAIEditPromptBuilderTests {
             target: UniversalAIEditTargetSnapshot(
                 appName: "Mail",
                 bundleIdentifier: "com.apple.mail",
-                processIdentifier: 42,
-                focusedWindowTitle: "Reply",
-                focusedWindowFrame: nil
-            ),
-            selectedText: "Original draft",
-            clipboardText: nil,
-            screenText: "Application: Mail\nWindow Content:\nThread context"
-        )
+            processIdentifier: 42,
+            focusedWindowTitle: "Reply",
+            focusedWindowFrame: nil
+        ),
+        selectedText: "Original draft",
+        clipboardText: nil,
+        screenText: "Application: Mail\nWindow Content:\nThread context",
+        diagnostics: []
+    )
 
         let payload = UniversalAIEditPromptBuilder.userPayload(
             instruction: "Make it shorter",

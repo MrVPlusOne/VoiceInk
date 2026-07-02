@@ -5,6 +5,22 @@ import SelectedTextKit
 
 @MainActor
 final class SelectedTextService {
+    enum CaptureResult: Equatable {
+        case captured(String)
+        case noSelection
+        case accessibilityMissing
+        case failed(String)
+
+        var text: String? {
+            switch self {
+            case .captured(let text):
+                return text
+            case .noSelection, .accessibilityMissing, .failed:
+                return nil
+            }
+        }
+    }
+
     private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "SelectedTextService")
     private static let textManager = SelectedTextManager.shared
     private static let selectedTextStrategies: [TextStrategy] = [
@@ -14,16 +30,23 @@ final class SelectedTextService {
     ]
 
     static func fetchSelectedText() async -> String? {
+        await captureSelectedText().text
+    }
+
+    static func captureSelectedText() async -> CaptureResult {
         guard AXIsProcessTrusted() else {
             logger.debug("Accessibility is not trusted; selected text capture skipped")
-            return nil
+            return .accessibilityMissing
         }
 
         do {
-            return normalized(try await textManager.getSelectedText(strategies: selectedTextStrategies))
+            if let text = normalized(try await textManager.getSelectedText(strategies: selectedTextStrategies)) {
+                return .captured(text)
+            }
+            return .noSelection
         } catch {
             logger.debug("SelectedTextKit failed to capture selected text: \(error, privacy: .public)")
-            return nil
+            return .failed(error.localizedDescription)
         }
     }
 

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct UniversalAIEditPanelView: View {
@@ -86,12 +87,12 @@ struct UniversalAIEditPanelView: View {
 
             HStack(spacing: 6) {
                 contextChip(
-                    title: manager.context?.selectedText == nil ? "No selection" : "Selection",
+                    title: selectionChipTitle,
                     systemImage: "text.cursor",
                     isActive: manager.context?.selectedText != nil
                 )
                 contextChip(
-                    title: manager.context?.screenText == nil ? "No screen context" : "Screen context",
+                    title: screenChipTitle,
                     systemImage: "rectangle.on.rectangle",
                     isActive: manager.context?.screenText != nil
                 )
@@ -101,6 +102,8 @@ struct UniversalAIEditPanelView: View {
                     isActive: manager.context?.clipboardText != nil
                 )
             }
+
+            diagnosticsView
 
             if let selectedText = manager.context?.selectedText, !selectedText.isEmpty {
                 Text(selectedText)
@@ -113,6 +116,83 @@ struct UniversalAIEditPanelView: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(AppTheme.Surface.subtle)
                     )
+            }
+        }
+    }
+
+    private var diagnostics: [UniversalAIEditCaptureDiagnostic] {
+        manager.context?.diagnostics ?? []
+    }
+
+    private var selectionChipTitle: String {
+        if diagnostics.contains(.accessibilityPermissionMissing) {
+            return String(localized: "Accessibility needed")
+        }
+        if diagnostics.contains(.selectedTextCaptureFailed) {
+            return String(localized: "Selection failed")
+        }
+        if manager.context?.selectedText != nil {
+            return String(localized: "Selection")
+        }
+        return String(localized: "No selection")
+    }
+
+    private var screenChipTitle: String {
+        if diagnostics.contains(.screenContextDisabled) {
+            return String(localized: "Screen off")
+        }
+        if diagnostics.contains(.screenRecordingPermissionMissing) {
+            return String(localized: "Screen permission")
+        }
+        if diagnostics.contains(.screenCaptureFailed) {
+            return String(localized: "Screen failed")
+        }
+        if diagnostics.contains(.screenTextUnavailable) {
+            return String(localized: "No screen text")
+        }
+        if manager.context?.screenText != nil {
+            return String(localized: "Screen context")
+        }
+        return String(localized: "No screen context")
+    }
+
+    @ViewBuilder
+    private var diagnosticsView: some View {
+        if !diagnostics.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(diagnostics) { diagnostic in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: diagnostic.systemImage)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(diagnostic.isWarning ? AppTheme.Status.warningStrong : AppTheme.Text.secondary)
+                            .frame(width: 16)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(diagnostic.title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Text.primary)
+                            Text(diagnostic.message)
+                                .font(.system(size: 11))
+                                .foregroundColor(AppTheme.Text.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        if let urlString = diagnostic.settingsURLString,
+                           let url = URL(string: urlString) {
+                            Button("Open Settings") {
+                                NSWorkspace.shared.open(url)
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                        }
+                    }
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill((diagnostic.isWarning ? AppTheme.Status.warningStrong : AppTheme.Surface.controlActive).opacity(diagnostic.isWarning ? 0.12 : 0.55))
+                    )
+                }
             }
         }
     }

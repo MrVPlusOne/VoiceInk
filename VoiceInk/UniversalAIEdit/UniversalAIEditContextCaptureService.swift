@@ -6,24 +6,49 @@ import Foundation
 final class UniversalAIEditContextCaptureService {
     func capture(configuration: EnhancementRuntimeConfiguration?) async -> UniversalAIEditContext {
         let target = targetSnapshot()
-        async let selectedText = SelectedTextService.fetchSelectedText()
+        async let selectedTextCapture = SelectedTextService.captureSelectedText()
         let clipboardText = configuration?.useClipboardContext == true
             ? NSPasteboard.general.string(forType: .string)
             : nil
+        var diagnostics: [UniversalAIEditCaptureDiagnostic] = []
         let screenText: String?
 
-        if configuration?.useScreenCaptureContext == true, CGPreflightScreenCaptureAccess() {
-            screenText = await ScreenCaptureService().captureAndExtractText()
+        if configuration?.useScreenCaptureContext == true {
+            if CGPreflightScreenCaptureAccess() {
+                screenText = await ScreenCaptureService().captureAndExtractText()
+                if screenText == nil {
+                    diagnostics.append(.screenCaptureFailed)
+                } else if screenText?.contains("No text detected via OCR") == true {
+                    diagnostics.append(.screenTextUnavailable)
+                }
+            } else {
+                screenText = nil
+                diagnostics.append(.screenRecordingPermissionMissing)
+            }
         } else {
             screenText = nil
+            diagnostics.append(.screenContextDisabled)
+        }
+
+        let selectedTextResult = await selectedTextCapture
+        switch selectedTextResult {
+        case .captured:
+            break
+        case .noSelection:
+            diagnostics.append(.selectedTextUnavailable)
+        case .accessibilityMissing:
+            diagnostics.append(.accessibilityPermissionMissing)
+        case .failed:
+            diagnostics.append(.selectedTextCaptureFailed)
         }
 
         return UniversalAIEditContext(
             capturedAt: Date(),
             target: target,
-            selectedText: await selectedText,
+            selectedText: selectedTextResult.text,
             clipboardText: normalized(clipboardText),
-            screenText: normalized(screenText)
+            screenText: normalized(screenText),
+            diagnostics: diagnostics
         )
     }
 

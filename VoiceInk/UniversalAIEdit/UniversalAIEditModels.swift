@@ -63,12 +63,102 @@ struct UniversalAIEditContext: Equatable {
     let selectedText: String?
     let clipboardText: String?
     let screenText: String?
+    let diagnostics: [UniversalAIEditCaptureDiagnostic]
 
     var mode: UniversalAIEditMode {
         if let selectedText, !selectedText.isEmpty {
             return .replaceSelection
         }
         return .insertNew
+    }
+}
+
+enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
+    case accessibilityPermissionMissing
+    case selectedTextUnavailable
+    case selectedTextCaptureFailed
+    case screenContextDisabled
+    case screenRecordingPermissionMissing
+    case screenCaptureFailed
+    case screenTextUnavailable
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .accessibilityPermissionMissing:
+            return String(localized: "Accessibility needed")
+        case .selectedTextUnavailable:
+            return String(localized: "No selected text")
+        case .selectedTextCaptureFailed:
+            return String(localized: "Selection capture failed")
+        case .screenContextDisabled:
+            return String(localized: "Screen context off")
+        case .screenRecordingPermissionMissing:
+            return String(localized: "Screen Recording needed")
+        case .screenCaptureFailed:
+            return String(localized: "Screen capture failed")
+        case .screenTextUnavailable:
+            return String(localized: "No screen text detected")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .accessibilityPermissionMissing:
+            return String(localized: "VoiceInk cannot read selected text or safely paste until Accessibility access is granted.")
+        case .selectedTextUnavailable:
+            return String(localized: "No selected text was detected. AI Edit will generate text for insertion instead.")
+        case .selectedTextCaptureFailed:
+            return String(localized: "VoiceInk could not read the current selection. You can still generate text or copy the result.")
+        case .screenContextDisabled:
+            return String(localized: "Screen context is disabled for the active mode, so only selected text and typed instructions will be sent.")
+        case .screenRecordingPermissionMissing:
+            return String(localized: "Screen Recording access is missing, so active-window OCR context is unavailable.")
+        case .screenCaptureFailed:
+            return String(localized: "VoiceInk could not capture the active window for context.")
+        case .screenTextUnavailable:
+            return String(localized: "The active window was captured, but OCR did not find text.")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .accessibilityPermissionMissing:
+            return "accessibility"
+        case .selectedTextUnavailable:
+            return "text.cursor"
+        case .selectedTextCaptureFailed:
+            return "exclamationmark.triangle"
+        case .screenContextDisabled:
+            return "rectangle.slash"
+        case .screenRecordingPermissionMissing:
+            return "rectangle.on.rectangle.slash"
+        case .screenCaptureFailed:
+            return "camera.metering.unknown"
+        case .screenTextUnavailable:
+            return "text.viewfinder"
+        }
+    }
+
+    var isWarning: Bool {
+        switch self {
+        case .accessibilityPermissionMissing, .selectedTextCaptureFailed, .screenRecordingPermissionMissing, .screenCaptureFailed:
+            return true
+        case .selectedTextUnavailable, .screenContextDisabled, .screenTextUnavailable:
+            return false
+        }
+    }
+
+    var settingsURLString: String? {
+        switch self {
+        case .accessibilityPermissionMissing:
+            return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        case .screenRecordingPermissionMissing:
+            return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+        case .selectedTextUnavailable, .selectedTextCaptureFailed, .screenContextDisabled, .screenCaptureFailed, .screenTextUnavailable:
+            return nil
+        }
     }
 }
 
@@ -86,6 +176,7 @@ enum UniversalAIEditError: LocalizedError {
     case emptyModelOutput
     case transcriptionModelMissing
     case targetUnavailable
+    case targetUncertain(String)
     case pasteUnavailable
 
     var errorDescription: String? {
@@ -102,6 +193,8 @@ enum UniversalAIEditError: LocalizedError {
             return String(localized: "No transcription model is available for voice instructions.")
         case .targetUnavailable:
             return String(localized: "Target app is unavailable. The result was copied instead.")
+        case .targetUncertain(let reason):
+            return String(format: String(localized: "Original target is uncertain: %@. The result was copied instead."), reason)
         case .pasteUnavailable:
             return String(localized: "Paste is unavailable. The result was copied instead.")
         }

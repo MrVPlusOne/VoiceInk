@@ -138,10 +138,10 @@ final class UniversalAIEditManager: ObservableObject {
             targetApp.activate(options: [])
             try? await Task.sleep(nanoseconds: 180_000_000)
 
-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetApp.processIdentifier else {
+            if let validationError = validateTargetFocus(targetApp: targetApp, snapshot: context?.target) {
                 _ = ClipboardManager.copyToClipboard(text)
                 NotificationManager.shared.showNotification(
-                    title: UniversalAIEditError.targetUnavailable.localizedDescription,
+                    title: validationError.localizedDescription,
                     type: .warning,
                     duration: 5.0
                 )
@@ -313,6 +313,109 @@ final class UniversalAIEditManager: ObservableObject {
         phase = .failed(message)
         statusText = message
         NotificationManager.shared.showNotification(title: message, type: .error, duration: 5.0)
+    }
+
+    private func validateTargetFocus(
+        targetApp: NSRunningApplication,
+        snapshot: UniversalAIEditTargetSnapshot?
+    ) -> UniversalAIEditError? {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetApp.processIdentifier else {
+            return .targetUnavailable
+        }
+
+        guard let snapshot else {
+            return .targetUncertain(String(localized: "missing target details"))
+        }
+
+        let capturedTitle = snapshot.focusedWindowTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let capturedFrame = snapshot.focusedWindowFrame
+        guard capturedTitle?.isEmpty == false || capturedFrame != nil else {
+            return .targetUncertain(String(localized: "window identity was not captured"))
+        }
+
+        let appElement = AXUIElementCreateApplication(targetApp.processIdentifier)
+        guard let focusedWindow = copyAXElementAttribute(kAXFocusedWindowAttribute, from: appElement) else {
+            return .targetUncertain(String(localized: "focused window is unavailable"))
+        }
+
+        if let capturedTitle, !capturedTitle.isEmpty {
+            let currentTitle = copyStringAttribute(kAXTitleAttribute, from: focusedWindow)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard currentTitle == capturedTitle else {
+                return .targetUncertain(String(localized: "focused window title changed"))
+            }
+        }
+
+        if let capturedFrame {
+            guard let currentPosition = copyCGPointAttribute(kAXPositionAttribute, from: focusedWindow),
+                  let currentSize = copyCGSizeAttribute(kAXSizeAttribute, from: focusedWindow) else {
+                return .targetUncertain(String(localized: "focused window frame is unavailable"))
+            }
+
+            let currentFrame = CGRect(origin: currentPosition, size: currentSize)
+            guard frameDistance(currentFrame, capturedFrame) <= 64 else {
+                return .targetUncertain(String(localized: "focused window moved or changed"))
+            }
+        }
+
+        return nil
+    }
+
+    private func frameDistance(_ first: CGRect, _ second: CGRect) -> CGFloat {
+        abs(first.origin.x - second.origin.x) +
+            abs(first.origin.y - second.origin.y) +
+            abs(first.size.width - second.size.width) +
+            abs(first.size.height - second.size.height)
+    }
+
+    private func copyAXElementAttribute(_ attribute: String, from element: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+
+        return (value as! AXUIElement)
+    }
+
+    private func copyStringAttribute(_ attribute: String, from element: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+            return nil
+        }
+
+        return value as? String
+    }
+
+    private func copyCGPointAttribute(_ attribute: String, from element: AXUIElement) -> CGPoint? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+
+        var point = CGPoint.zero
+        guard AXValueGetValue((value as! AXValue), .cgPoint, &point) else {
+            return nil
+        }
+        return point
+    }
+
+    private func copyCGSizeAttribute(_ attribute: String, from element: AXUIElement) -> CGSize? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+
+        var size = CGSize.zero
+        guard AXValueGetValue((value as! AXValue), .cgSize, &size) else {
+            return nil
+        }
+        return size
     }
 
     private static func openAccessibilitySettings() {
