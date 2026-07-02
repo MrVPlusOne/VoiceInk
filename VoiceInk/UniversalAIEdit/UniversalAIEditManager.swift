@@ -14,6 +14,8 @@ final class UniversalAIEditManager: ObservableObject {
     @Published private(set) var statusText: String?
     @Published private(set) var lastResult: UniversalAIEditResult?
     @Published private(set) var isVoiceRecording = false
+    @Published private(set) var voiceMeterLevel: Double = 0
+    @Published private(set) var voiceMeterSamples: [Double] = []
 
     private let contextCaptureService = UniversalAIEditContextCaptureService()
     private let editService = UniversalAIEditService()
@@ -21,6 +23,7 @@ final class UniversalAIEditManager: ObservableObject {
     private var instructionAudioURL: URL?
     private var panel: UniversalAIEditPanel?
     private var hostingController: NSHostingController<UniversalAIEditPanelView>?
+    private var voiceMeterTask: Task<Void, Never>?
     private weak var engine: VoiceInkEngine?
     private var targetApp: NSRunningApplication?
 
@@ -225,6 +228,7 @@ final class UniversalAIEditManager: ObservableObject {
         }
         phase = .idle
         isVoiceRecording = false
+        stopVoiceMetering(reset: true)
         instructionAudioURL = nil
         statusText = nil
     }
@@ -243,6 +247,7 @@ final class UniversalAIEditManager: ObservableObject {
             try await instructionRecorder.startRecording(toOutputFile: url)
             instructionAudioURL = url
             isVoiceRecording = true
+            startVoiceMetering()
             phase = .listening
             statusText = String(localized: "Listening...")
         } catch {
@@ -253,6 +258,7 @@ final class UniversalAIEditManager: ObservableObject {
     private func stopVoiceInstruction() async {
         guard isVoiceRecording else { return }
         isVoiceRecording = false
+        stopVoiceMetering(reset: true)
         await instructionRecorder.stopRecording()
 
         guard let engine,
@@ -301,6 +307,7 @@ final class UniversalAIEditManager: ObservableObject {
     private func cancelVoiceInstruction() async {
         guard isVoiceRecording else { return }
         isVoiceRecording = false
+        stopVoiceMetering(reset: true)
         await instructionRecorder.stopRecording()
         if let instructionAudioURL {
             try? FileManager.default.removeItem(at: instructionAudioURL)
@@ -310,9 +317,39 @@ final class UniversalAIEditManager: ObservableObject {
 
     private func fail(_ error: Error) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        isVoiceRecording = false
+        stopVoiceMetering(reset: true)
         phase = .failed(message)
         statusText = message
         NotificationManager.shared.showNotification(title: message, type: .error, duration: 5.0)
+    }
+
+    private func startVoiceMetering() {
+        voiceMeterTask?.cancel()
+        voiceMeterSamples = []
+        voiceMeterLevel = 0
+
+        voiceMeterTask = Task { @MainActor [weak self] in
+            while let self, !Task.isCancelled, self.isVoiceRecording {
+                let level = min(1, max(0, self.instructionRecorder.audioMeter.peakPower))
+                self.voiceMeterLevel = level
+                self.voiceMeterSamples.append(level)
+                if self.voiceMeterSamples.count > 40 {
+                    self.voiceMeterSamples.removeFirst(self.voiceMeterSamples.count - 40)
+                }
+
+                try? await Task.sleep(nanoseconds: 80_000_000)
+            }
+        }
+    }
+
+    private func stopVoiceMetering(reset: Bool) {
+        voiceMeterTask?.cancel()
+        voiceMeterTask = nil
+        if reset {
+            voiceMeterLevel = 0
+            voiceMeterSamples = []
+        }
     }
 
     private func validateTargetFocus(

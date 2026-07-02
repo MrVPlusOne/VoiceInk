@@ -160,6 +160,154 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
             return nil
         }
     }
+
+    var isSelectionOnly: Bool {
+        switch self {
+        case .selectedTextUnavailable, .selectedTextCaptureFailed:
+            return true
+        case .accessibilityPermissionMissing, .screenContextDisabled, .screenRecordingPermissionMissing, .screenCaptureFailed, .screenTextUnavailable:
+            return false
+        }
+    }
+}
+
+enum UniversalAIEditDiagnosticVisibility {
+    static func visibleDiagnostics(
+        _ diagnostics: [UniversalAIEditCaptureDiagnostic],
+        mode: UniversalAIEditMode
+    ) -> [UniversalAIEditCaptureDiagnostic] {
+        switch mode {
+        case .replaceSelection:
+            return diagnostics
+        case .insertNew:
+            return diagnostics.filter { !$0.isSelectionOnly }
+        }
+    }
+}
+
+struct UniversalAIEditDiffSegment: Equatable {
+    enum Kind: Equatable {
+        case unchanged
+        case removed
+        case inserted
+    }
+
+    let kind: Kind
+    let text: String
+}
+
+enum UniversalAIEditDiffBuilder {
+    private static let maxMatrixCells = 40_000
+
+    static func segments(original: String, revised: String) -> [UniversalAIEditDiffSegment] {
+        let oldTokens = tokens(in: original)
+        let newTokens = tokens(in: revised)
+
+        if oldTokens == newTokens {
+            return revised.isEmpty ? [] : [.init(kind: .unchanged, text: revised)]
+        }
+        if oldTokens.isEmpty {
+            return newTokens.isEmpty ? [] : [.init(kind: .inserted, text: revised)]
+        }
+        if newTokens.isEmpty {
+            return [.init(kind: .removed, text: original)]
+        }
+
+        guard oldTokens.count * newTokens.count <= maxMatrixCells else {
+            return [
+                .init(kind: .removed, text: original),
+                .init(kind: .inserted, text: revised)
+            ]
+        }
+
+        var table = Array(
+            repeating: Array(repeating: 0, count: newTokens.count + 1),
+            count: oldTokens.count + 1
+        )
+
+        for oldIndex in stride(from: oldTokens.count - 1, through: 0, by: -1) {
+            for newIndex in stride(from: newTokens.count - 1, through: 0, by: -1) {
+                if oldTokens[oldIndex] == newTokens[newIndex] {
+                    table[oldIndex][newIndex] = table[oldIndex + 1][newIndex + 1] + 1
+                } else {
+                    table[oldIndex][newIndex] = max(
+                        table[oldIndex + 1][newIndex],
+                        table[oldIndex][newIndex + 1]
+                    )
+                }
+            }
+        }
+
+        var oldIndex = 0
+        var newIndex = 0
+        var rawSegments: [UniversalAIEditDiffSegment] = []
+
+        while oldIndex < oldTokens.count && newIndex < newTokens.count {
+            if oldTokens[oldIndex] == newTokens[newIndex] {
+                rawSegments.append(.init(kind: .unchanged, text: oldTokens[oldIndex]))
+                oldIndex += 1
+                newIndex += 1
+            } else if table[oldIndex + 1][newIndex] >= table[oldIndex][newIndex + 1] {
+                rawSegments.append(.init(kind: .removed, text: oldTokens[oldIndex]))
+                oldIndex += 1
+            } else {
+                rawSegments.append(.init(kind: .inserted, text: newTokens[newIndex]))
+                newIndex += 1
+            }
+        }
+
+        while oldIndex < oldTokens.count {
+            rawSegments.append(.init(kind: .removed, text: oldTokens[oldIndex]))
+            oldIndex += 1
+        }
+
+        while newIndex < newTokens.count {
+            rawSegments.append(.init(kind: .inserted, text: newTokens[newIndex]))
+            newIndex += 1
+        }
+
+        return coalesced(rawSegments)
+    }
+
+    private static func tokens(in text: String) -> [String] {
+        var result: [String] = []
+        var current = ""
+        var currentIsWhitespace: Bool?
+
+        for character in text {
+            let isWhitespace = character.unicodeScalars.allSatisfy {
+                CharacterSet.whitespacesAndNewlines.contains($0)
+            }
+
+            if let currentIsWhitespace, currentIsWhitespace != isWhitespace {
+                result.append(current)
+                current = String(character)
+            } else {
+                current.append(character)
+            }
+            currentIsWhitespace = isWhitespace
+        }
+
+        if !current.isEmpty {
+            result.append(current)
+        }
+
+        return result
+    }
+
+    private static func coalesced(_ segments: [UniversalAIEditDiffSegment]) -> [UniversalAIEditDiffSegment] {
+        var result: [UniversalAIEditDiffSegment] = []
+
+        for segment in segments where !segment.text.isEmpty {
+            if let last = result.last, last.kind == segment.kind {
+                result[result.count - 1] = .init(kind: last.kind, text: last.text + segment.text)
+            } else {
+                result.append(segment)
+            }
+        }
+
+        return result
+    }
 }
 
 struct UniversalAIEditResult: Equatable {

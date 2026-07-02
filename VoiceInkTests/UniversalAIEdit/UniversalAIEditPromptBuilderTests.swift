@@ -41,4 +41,64 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(prompt.contains("untrusted source material"))
         #expect(prompt.contains("Return only the final text to paste"))
     }
+
+    @Test func generateModeHidesSelectionOnlyDiagnostics() {
+        let diagnostics: [UniversalAIEditCaptureDiagnostic] = [
+            .selectedTextUnavailable,
+            .selectedTextCaptureFailed,
+            .screenRecordingPermissionMissing,
+            .screenTextUnavailable
+        ]
+
+        let visible = UniversalAIEditDiagnosticVisibility.visibleDiagnostics(
+            diagnostics,
+            mode: .insertNew
+        )
+
+        #expect(!visible.contains(.selectedTextUnavailable))
+        #expect(!visible.contains(.selectedTextCaptureFailed))
+        #expect(visible.contains(.screenRecordingPermissionMissing))
+        #expect(visible.contains(.screenTextUnavailable))
+    }
+
+    @Test func editModeKeepsSelectionDiagnostics() {
+        let diagnostics: [UniversalAIEditCaptureDiagnostic] = [
+            .selectedTextUnavailable,
+            .selectedTextCaptureFailed
+        ]
+
+        let visible = UniversalAIEditDiagnosticVisibility.visibleDiagnostics(
+            diagnostics,
+            mode: .replaceSelection
+        )
+
+        #expect(visible == diagnostics)
+    }
+
+    @Test func textDiffMarksInsertedAndRemovedText() {
+        let segments = UniversalAIEditDiffBuilder.segments(
+            original: "Please make this shorter.",
+            revised: "Please make this much shorter."
+        )
+
+        #expect(segments.contains(.init(kind: .unchanged, text: "Please make this ")))
+        #expect(segments.contains(.init(kind: .inserted, text: "much ")))
+        #expect(segments.contains(.init(kind: .unchanged, text: "shorter.")))
+        #expect(!segments.contains { $0.kind == .removed })
+    }
+
+    @Test func textDiffFallsBackForLargeInputs() {
+        let original = Array(repeating: "alpha", count: 250).joined(separator: " ")
+        let revised = Array(repeating: "beta", count: 250).joined(separator: " ")
+
+        let segments = UniversalAIEditDiffBuilder.segments(
+            original: original,
+            revised: revised
+        )
+
+        #expect(segments == [
+            .init(kind: .removed, text: original),
+            .init(kind: .inserted, text: revised)
+        ])
+    }
 }
