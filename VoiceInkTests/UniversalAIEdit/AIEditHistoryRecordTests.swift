@@ -30,6 +30,63 @@ struct AIEditHistoryRecordTests {
         #expect(record.targetDisplayName == "Mail")
     }
 
+    @Test func exposesSentScreenContextFromStoredPayload() {
+        let target = UniversalAIEditTargetSnapshot(
+            appName: "Chrome",
+            bundleIdentifier: "com.google.Chrome",
+            processIdentifier: 42,
+            focusedWindowTitle: "Takode",
+            focusedWindowFrame: nil
+        )
+        let record = AIEditHistoryRecord(
+            instruction: "Summarize this",
+            mode: .insertNew,
+            generatedText: "Summary",
+            providerName: "OpenAI",
+            modelName: "gpt-5.5",
+            generationDuration: 1.2,
+            target: target,
+            aiRequestUserMessage: """
+            <EDIT_MODE>
+            insert_new
+            </EDIT_MODE>
+
+            <CURRENT_WINDOW_CONTEXT>
+            A Chrome tab is open.
+            The page includes a quest detail.
+            </CURRENT_WINDOW_CONTEXT>
+
+            <CUSTOM_VOCABULARY>
+            VoiceInk
+            </CUSTOM_VOCABULARY>
+            """
+        )
+
+        #expect(record.sentScreenContext == "A Chrome tab is open.\nThe page includes a quest detail.")
+    }
+
+    @Test func ignoresMissingScreenContextPayloadBlock() {
+        let target = UniversalAIEditTargetSnapshot(
+            appName: "Notes",
+            bundleIdentifier: "com.apple.Notes",
+            processIdentifier: 42,
+            focusedWindowTitle: nil,
+            focusedWindowFrame: nil
+        )
+        let record = AIEditHistoryRecord(
+            instruction: "Rewrite",
+            mode: .replaceSelection,
+            generatedText: "Rewritten",
+            providerName: "OpenAI",
+            modelName: "gpt-5.5",
+            generationDuration: 0.8,
+            target: target,
+            aiRequestUserMessage: "<USER_INSTRUCTION>\nRewrite\n</USER_INSTRUCTION>"
+        )
+
+        #expect(record.sentScreenContext == nil)
+    }
+
     @Test func recordsOutcomeTransitions() {
         let record = AIEditHistoryRecord(
             instruction: "Draft a reply",

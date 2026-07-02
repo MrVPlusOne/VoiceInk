@@ -132,10 +132,34 @@ final class AIEditHistoryRecord {
         return parts.joined(separator: "\n\n")
     }
 
+    var sentScreenContext: String? {
+        guard let userMessage = aiRequestUserMessage else { return nil }
+        return Self.taggedContent(named: "CURRENT_WINDOW_CONTEXT", in: userMessage)
+    }
+
     func recordOutcome(_ outcome: AIEditHistoryOutcome, note: String? = nil) {
         outcomeRawValue = outcome.rawValue
         outcomeNote = Self.normalized(note)
         updatedAt = Date()
+    }
+
+    private static func taggedContent(named tagName: String, in text: String) -> String? {
+        let openTag = "<\(tagName)>"
+        let closeTag = "</\(tagName)>"
+        guard let openRange = text.range(of: openTag),
+              let closeRange = text.range(of: closeTag, range: openRange.upperBound..<text.endIndex) else {
+            return nil
+        }
+
+        var content = String(text[openRange.upperBound..<closeRange.lowerBound])
+        if content.first == "\n" {
+            content.removeFirst()
+        }
+        if content.last == "\n" {
+            content.removeLast()
+        }
+
+        return normalized(content)
     }
 
     private static func normalized(_ text: String?) -> String? {

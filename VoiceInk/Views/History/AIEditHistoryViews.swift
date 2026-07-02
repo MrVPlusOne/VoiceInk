@@ -4,11 +4,14 @@ struct AIEditHistoryDetailView: View {
     let record: AIEditHistoryRecord
     var onInfoTap: (() -> Void)?
 
+    @State private var isScreenContextInspectorPresented = false
+
     var body: some View {
         VStack(spacing: 12) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    metadataSummary
 
                     AIEditHistoryTextBlock(
                         label: "Instruction",
@@ -31,18 +34,21 @@ struct AIEditHistoryDetailView: View {
                     )
 
                     if !record.fullRequestText.isEmpty {
-                        AIEditHistoryTextBlock(
-                            label: "Model Prompt / Payload",
-                            text: record.fullRequestText,
-                            systemImage: "curlybraces",
-                            isMonospaced: true
-                        )
+                        requestSection
                     }
                 }
                 .padding(16)
             }
         }
         .padding(.vertical, 12)
+        .sheet(isPresented: $isScreenContextInspectorPresented) {
+            if let screenContext = record.sentScreenContext {
+                AIEditScreenContextInspectorView(
+                    contextText: screenContext,
+                    subtitle: "Sent with this AI Edit request"
+                )
+            }
+        }
     }
 
     private var header: some View {
@@ -66,6 +72,10 @@ struct AIEditHistoryDetailView: View {
 
             Spacer()
 
+            if record.sentScreenContext != nil {
+                screenContextButton
+            }
+
             if let onInfoTap {
                 Button(action: onInfoTap) {
                     Image(systemName: "info.circle")
@@ -77,6 +87,103 @@ struct AIEditHistoryDetailView: View {
             }
         }
     }
+
+    private var metadataSummary: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.adaptive(minimum: 150, maximum: 240), spacing: 8, alignment: .leading)
+            ],
+            alignment: .leading,
+            spacing: 8
+        ) {
+            summaryChip(
+                icon: "calendar",
+                label: "Date",
+                value: record.timestamp.formatted(date: .abbreviated, time: .shortened)
+            )
+            summaryChip(icon: "sparkles", label: "Provider", value: record.providerName)
+            summaryChip(icon: "cpu.fill", label: "Model", value: record.modelName)
+            summaryChip(icon: "macwindow", label: "Target", value: record.targetDisplayName)
+        }
+    }
+
+    private func summaryChip(icon: String, label: LocalizedStringKey, value: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(AppTheme.Text.secondary)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(AppTheme.Text.muted)
+                Text(value)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Text.primary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous)
+                .fill(AppTheme.Surface.subtle)
+        )
+    }
+
+    private var requestSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("Model Prompt / Payload", systemImage: "curlybraces")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.Text.primary)
+
+                Spacer()
+
+                if record.sentScreenContext != nil {
+                    screenContextButton
+                }
+            }
+
+            if let systemMessage = record.aiRequestSystemMessage, !systemMessage.isEmpty {
+                AIEditHistoryTextBlock(
+                    label: "System Prompt",
+                    text: systemMessage,
+                    systemImage: "terminal",
+                    isMonospaced: true
+                )
+            }
+
+            if let userMessage = record.aiRequestUserMessage, !userMessage.isEmpty {
+                AIEditHistoryTextBlock(
+                    label: "User Payload",
+                    text: userMessage,
+                    systemImage: "text.badge.checkmark",
+                    isMonospaced: true
+                )
+            }
+        }
+    }
+
+    private var screenContextButton: some View {
+        Button {
+            isScreenContextInspectorPresented = true
+        } label: {
+            Label("Screen context", systemImage: "rectangle.on.rectangle")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Text.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.Selection.fill)
+                )
+        }
+        .buttonStyle(.plain)
+        .help("View sent screen context")
+    }
 }
 
 struct AIEditHistoryInfoPanel: View {
@@ -86,7 +193,6 @@ struct AIEditHistoryInfoPanel: View {
         Form {
             detailsSection
             targetSection
-            aiRequestSection
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -168,41 +274,6 @@ struct AIEditHistoryInfoPanel: View {
             }
         } header: {
             Text("Target")
-        }
-    }
-
-    @ViewBuilder
-    private var aiRequestSection: some View {
-        if record.aiRequestSystemMessage != nil || record.aiRequestUserMessage != nil {
-            Section {
-                if let systemMsg = record.aiRequestSystemMessage, !systemMsg.isEmpty {
-                    promptBlock(label: "System Prompt", text: systemMsg)
-                }
-
-                if let userMsg = record.aiRequestUserMessage, !userMsg.isEmpty {
-                    promptBlock(label: "User Payload", text: userMsg)
-                }
-            } header: {
-                Text("Model Prompt / Payload")
-            }
-            .hoverCopyButton(
-                textToCopy: record.fullRequestText,
-                alignment: .topTrailing,
-                padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-            )
-        }
-    }
-
-    private func promptBlock(label: LocalizedStringKey, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
-            Text(text)
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                .lineSpacing(2)
-                .textSelection(.enabled)
-                .foregroundColor(.primary)
         }
     }
 

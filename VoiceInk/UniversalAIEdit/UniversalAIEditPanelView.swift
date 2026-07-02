@@ -8,6 +8,7 @@ struct UniversalAIEditPanelView: View {
     @FocusState private var instructionFocused: Bool
     @State private var contextDetailsExpanded = false
     @State private var previewMode: UniversalAIEditPreviewMode = .diff
+    @State private var isScreenContextInspectorPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +37,14 @@ struct UniversalAIEditPanelView: View {
         )
         .onAppear {
             instructionFocused = true
+        }
+        .sheet(isPresented: $isScreenContextInspectorPresented) {
+            if let screenText = manager.context?.screenText, !screenText.isEmpty {
+                AIEditScreenContextInspectorView(
+                    contextText: screenText,
+                    subtitle: screenContextInspectorSubtitle
+                )
+            }
         }
     }
 
@@ -90,11 +99,7 @@ struct UniversalAIEditPanelView: View {
                         systemImage: "text.cursor",
                         isActive: manager.context?.selectedText?.isEmpty == false
                     )
-                    contextChip(
-                        title: screenChipTitle,
-                        systemImage: "rectangle.on.rectangle",
-                        isActive: manager.context?.screenText?.isEmpty == false
-                    )
+                    screenContextChip
                     contextChip(
                         title: manager.context?.clipboardText == nil ? "Clipboard off" : "Clipboard",
                         systemImage: "doc.on.clipboard",
@@ -197,6 +202,13 @@ struct UniversalAIEditPanelView: View {
         return String(localized: "No screen context")
     }
 
+    private var screenContextInspectorSubtitle: String {
+        if let targetName = manager.context?.target.displayName {
+            return String(localized: "Captured from \(targetName) before this panel opened")
+        }
+        return String(localized: "Captured before this panel opened")
+    }
+
     @ViewBuilder
     private var diagnosticsView: some View {
         if !visibleDiagnostics.isEmpty {
@@ -238,7 +250,34 @@ struct UniversalAIEditPanelView: View {
         }
     }
 
+    @ViewBuilder
+    private var screenContextChip: some View {
+        if manager.context?.screenText?.isEmpty == false {
+            Button {
+                isScreenContextInspectorPresented = true
+            } label: {
+                contextChipLabel(
+                    title: screenChipTitle,
+                    systemImage: "rectangle.on.rectangle",
+                    isActive: true
+                )
+            }
+            .buttonStyle(.plain)
+            .help("View screen context")
+        } else {
+            contextChip(
+                title: screenChipTitle,
+                systemImage: "rectangle.on.rectangle",
+                isActive: false
+            )
+        }
+    }
+
     private func contextChip(title: String, systemImage: String, isActive: Bool) -> some View {
+        contextChipLabel(title: title, systemImage: systemImage, isActive: isActive)
+    }
+
+    private func contextChipLabel(title: String, systemImage: String, isActive: Bool) -> some View {
         Label(title, systemImage: systemImage)
             .font(.system(size: 11, weight: .medium))
             .foregroundColor(isActive ? AppTheme.Text.primary : AppTheme.Text.muted)
