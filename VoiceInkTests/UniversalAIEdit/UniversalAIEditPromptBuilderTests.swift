@@ -137,6 +137,13 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: true, isResultFresh: true) == .apply)
     }
 
+    @Test func applyIsAvailableOnlyForFreshResultWhileNotBusy() {
+        #expect(UniversalAIEditFlow.canApply(hasGeneratedText: true, phase: .preview, isResultFresh: true))
+        #expect(!UniversalAIEditFlow.canApply(hasGeneratedText: false, phase: .preview, isResultFresh: true))
+        #expect(!UniversalAIEditFlow.canApply(hasGeneratedText: true, phase: .preview, isResultFresh: false))
+        #expect(!UniversalAIEditFlow.canApply(hasGeneratedText: true, phase: .applying, isResultFresh: true))
+    }
+
     @Test func primaryActionReturnsToGenerateForStaleOldResultAfterFailedRegenerate() {
         #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: true, isResultFresh: false) == .generate)
     }

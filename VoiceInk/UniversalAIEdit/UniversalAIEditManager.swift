@@ -39,9 +39,11 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     var canApply: Bool {
-        !generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !phase.isBusy &&
-            isResultFresh
+        UniversalAIEditFlow.canApply(
+            hasGeneratedText: hasGeneratedText,
+            phase: phase,
+            isResultFresh: isResultFresh
+        )
     }
 
     var canCopyResult: Bool {
@@ -251,11 +253,11 @@ final class UniversalAIEditManager: ObservableObject {
     func applyResult() {
         guard canApply else { return }
 
-        Task { @MainActor in
-            phase = .applying
-            statusText = String(localized: "Applying...")
-            let text = generatedText
+        phase = .applying
+        statusText = String(localized: "Applying...")
+        let text = generatedText
 
+        Task { @MainActor in
             guard let targetApp else {
                 _ = ClipboardManager.copyToClipboard(text)
                 updateCurrentHistoryRecord(outcome: .copied, note: UniversalAIEditError.targetUnavailable.localizedDescription)

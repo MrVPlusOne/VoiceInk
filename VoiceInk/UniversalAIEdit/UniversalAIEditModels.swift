@@ -60,6 +60,16 @@ enum UniversalAIEditPrimaryAction: Equatable {
 }
 
 enum UniversalAIEditFlow {
+    static func canApply(
+        hasGeneratedText: Bool,
+        phase: UniversalAIEditPhase,
+        isResultFresh: Bool
+    ) -> Bool {
+        hasGeneratedText &&
+            !phase.isBusy &&
+            isResultFresh
+    }
+
     static func primaryAction(
         hasGeneratedText: Bool,
         isResultFresh: Bool
