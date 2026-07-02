@@ -45,7 +45,8 @@ final class UniversalAIEditService {
             instruction: trimmedInstruction,
             mode: mode,
             context: context,
-            customVocabulary: customVocabulary
+            customVocabulary: customVocabulary,
+            userPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey)
         )
 
         let start = Date()

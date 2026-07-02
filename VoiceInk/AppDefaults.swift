@@ -53,6 +53,7 @@ enum AppDefaults {
         "ShortEnhancementWordThreshold": 3,
         "EnhancementTimeoutSeconds": 7,
         "EnhancementRetryOnTimeout": true,
+        UniversalAIEditUserPreferences.userDefaultsKey: "",
 
         // Model
         "PrewarmModelOnWake": true,

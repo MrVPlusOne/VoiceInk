@@ -197,6 +197,9 @@ enum BackupImporter {
         if let clipboardDelay = general.clipboardRestoreDelay {
             UserDefaults.standard.set(clipboardDelay, forKey: "clipboardRestoreDelay")
         }
+        if let aiEditUserPreferences = general.aiEditUserPreferences {
+            UserDefaults.standard.set(aiEditUserPreferences, forKey: UniversalAIEditUserPreferences.userDefaultsKey)
+        }
 
         print("Successfully imported general settings.")
     }

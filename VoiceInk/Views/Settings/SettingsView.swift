@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage(PasteMethod.userDefaultsKey) private var pasteMethodRawValue = PasteMethod.standard.rawValue
     @AppStorage(AppAppearancePreference.userDefaultsKey) private var appAppearancePreference = AppAppearancePreference.system
     @AppStorage(AppLanguagePreference.userDefaultsKey) private var appLanguagePreference = AppLanguagePreference.systemValue
+    @AppStorage(UniversalAIEditUserPreferences.userDefaultsKey) private var aiEditUserPreferences = ""
     @State private var showResetOnboardingAlert = false
     @State private var showLanguageRestartAlert = false
     @State private var hasCancelRecordingShortcut = ShortcutStore.shortcut(for: .cancelRecorder) != nil
@@ -146,6 +147,27 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("User Preferences")
+                        .font(.headline)
+
+                    TextEditor(text: $aiEditUserPreferences)
+                        .font(.body)
+                        .frame(minHeight: 88)
+                        .textEditorStyle(.plain)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.secondary.opacity(0.25))
+                        )
+
+                    Text("Optional style, tone, and formatting preferences to include in AI Edit prompts.")
+                        .settingsDescription()
+                }
+            } header: {
+                Text("AI Edit")
             }
 
             Section("Pasting") {
