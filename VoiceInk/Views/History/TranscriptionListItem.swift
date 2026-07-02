@@ -1,29 +1,58 @@
 import SwiftUI
 
 struct TranscriptionListItem: View {
-    let transcription: Transcription
+    let entry: HistoryEntry
     let isSelected: Bool
     let isChecked: Bool
     let onSelect: () -> Void
-    let onToggleCheck: () -> Void
+    let onToggleCheck: (() -> Void)?
+
+    private var transcription: Transcription? {
+        entry.transcription
+    }
+
+    private var duration: TimeInterval? {
+        guard let transcription, transcription.duration > 0 else { return nil }
+        return transcription.duration
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Toggle("", isOn: Binding(
-                get: { isChecked },
-                set: { _ in onToggleCheck() }
-            ))
-            .toggleStyle(CircularCheckboxStyle())
-            .labelsHidden()
+            if let onToggleCheck {
+                Toggle("", isOn: Binding(
+                    get: { isChecked },
+                    set: { _ in onToggleCheck() }
+                ))
+                .toggleStyle(CircularCheckboxStyle())
+                .labelsHidden()
+            } else {
+                Image(systemName: entry.kindSystemImage)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 18, height: 18)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(transcription.timestamp, format: .dateTime.month(.abbreviated).day().hour().minute())
+                HStack(spacing: 6) {
+                    Text(entry.timestamp, format: .dateTime.month(.abbreviated).day().hour().minute())
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.secondary)
+
+                    if entry.aiEditRecord != nil {
+                        Text(entry.kindLabel)
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(AppTheme.Surface.card)
+                            )
+                            .foregroundColor(.secondary)
+                    }
+
                     Spacer()
-                    if transcription.duration > 0 {
-                        Text(transcription.duration.formatTiming())
+                    if let duration {
+                        Text(duration.formatTiming())
                             .font(.system(size: 10, weight: .medium))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
@@ -35,7 +64,7 @@ struct TranscriptionListItem: View {
                     }
                 }
 
-                Text(transcription.enhancedText ?? transcription.text)
+                Text(entry.previewText)
                     .font(.system(size: 12, weight: .regular))
                     .lineLimit(2)
                     .foregroundColor(.primary)

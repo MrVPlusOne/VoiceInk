@@ -49,6 +49,7 @@ struct VoiceInkApp: App {
         // Keep existing model order stable; append new models after synced entities.
         let schema = Schema([
             Transcription.self,
+            AIEditHistoryRecord.self,
             VocabularyWord.self,
             WordReplacement.self,
             SessionMetric.self
@@ -207,7 +208,7 @@ struct VoiceInkApp: App {
         let dictionaryStoreURL = appSupportURL.appendingPathComponent("dictionary.store")
         let statsStoreURL = appSupportURL.appendingPathComponent("stats.store")
 
-        let transcriptSchema = Schema([Transcription.self])
+        let transcriptSchema = Schema([Transcription.self, AIEditHistoryRecord.self])
         let transcriptConfig = ModelConfiguration(
             "default",
             schema: transcriptSchema,
@@ -245,7 +246,7 @@ struct VoiceInkApp: App {
     }
 
     private static func createInMemoryContainer(schema: Schema, logger: Logger) throws -> ModelContainer {
-        let transcriptSchema = Schema([Transcription.self])
+        let transcriptSchema = Schema([Transcription.self, AIEditHistoryRecord.self])
         let transcriptConfig = ModelConfiguration("default", schema: transcriptSchema, isStoredInMemoryOnly: true)
 
         let dictionarySchema = Schema([VocabularyWord.self, WordReplacement.self])

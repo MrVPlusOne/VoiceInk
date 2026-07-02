@@ -4,7 +4,7 @@ import SwiftData
 struct TranscriptionHistoryView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var searchText = ""
-    @State private var selectedTranscription: Transcription?
+    @State private var selectedEntry: HistoryEntry?
     @State private var selectedTranscriptions: Set<Transcription> = []
     @State private var showDeleteConfirmation = false
     @State private var isViewCurrentlyVisible = false
@@ -12,7 +12,7 @@ struct TranscriptionHistoryView: View {
     @State private var isLeftSidebarVisible = true
     @State private var isRightSidebarVisible = false
     @State private var leftSidebarWidth: CGFloat = 300
-    @State private var displayedTranscriptions: [Transcription] = []
+    @State private var displayedEntries: [HistoryEntry] = []
     @State private var isLoading = false
     @State private var hasMoreContent = true
     @State private var lastTimestamp: Date?
@@ -21,6 +21,7 @@ struct TranscriptionHistoryView: View {
     private let pageSize = 20
     
     @Query(Self.createLatestTranscriptionIndicatorDescriptor()) private var latestTranscriptionIndicator: [Transcription]
+    @Query(Self.createLatestAIEditIndicatorDescriptor()) private var latestAIEditIndicator: [AIEditHistoryRecord]
 
     private static func createLatestTranscriptionIndicatorDescriptor() -> FetchDescriptor<Transcription> {
         var descriptor = FetchDescriptor<Transcription>(
@@ -30,31 +31,11 @@ struct TranscriptionHistoryView: View {
         return descriptor
     }
 
-    private func cursorQueryDescriptor(after timestamp: Date? = nil) -> FetchDescriptor<Transcription> {
-        var descriptor = FetchDescriptor<Transcription>(
-            sortBy: [SortDescriptor(\Transcription.timestamp, order: .reverse)]
+    private static func createLatestAIEditIndicatorDescriptor() -> FetchDescriptor<AIEditHistoryRecord> {
+        var descriptor = FetchDescriptor<AIEditHistoryRecord>(
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-
-        if let timestamp = timestamp {
-            if !searchText.isEmpty {
-                descriptor.predicate = #Predicate<Transcription> { transcription in
-                    (transcription.text.localizedStandardContains(searchText) ||
-                    (transcription.enhancedText?.localizedStandardContains(searchText) ?? false)) &&
-                    transcription.timestamp < timestamp
-                }
-            } else {
-                descriptor.predicate = #Predicate<Transcription> { transcription in
-                    transcription.timestamp < timestamp
-                }
-            }
-        } else if !searchText.isEmpty {
-            descriptor.predicate = #Predicate<Transcription> { transcription in
-                transcription.text.localizedStandardContains(searchText) ||
-                (transcription.enhancedText?.localizedStandardContains(searchText) ?? false)
-            }
-        }
-        
-        descriptor.fetchLimit = pageSize
+        descriptor.fetchLimit = 1
         return descriptor
     }
 
@@ -147,7 +128,7 @@ struct TranscriptionHistoryView: View {
         }
         .onChange(of: searchText) { _, _ in
             Task {
-                await resetPagination()
+                resetPagination()
                 await loadInitialContent()
             }
         }
@@ -155,9 +136,25 @@ struct TranscriptionHistoryView: View {
             guard isViewCurrentlyVisible else { return }
             if newId != oldId {
                 Task {
-                    await resetPagination()
+                    resetPagination()
                     await loadInitialContent()
                 }
+            }
+        }
+        .onChange(of: latestAIEditIndicator.first?.updatedAt) { oldDate, newDate in
+            guard isViewCurrentlyVisible else { return }
+            if newDate != oldDate {
+                Task {
+                    resetPagination()
+                    await loadInitialContent()
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aiEditHistoryChanged)) { _ in
+            guard isViewCurrentlyVisible else { return }
+            Task {
+                resetPagination()
+                await loadInitialContent()
             }
         }
     }
@@ -186,7 +183,7 @@ struct TranscriptionHistoryView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                     .font(.system(size: 13))
-                TextField("Search transcriptions", text: $searchText)
+                TextField("Search history", text: $searchText)
                     .textFieldStyle(PlainTextFieldStyle())
                     .font(.system(size: 13))
             }
@@ -204,12 +201,12 @@ struct TranscriptionHistoryView: View {
             Divider()
 
             ZStack(alignment: .bottom) {
-                if displayedTranscriptions.isEmpty && !isLoading {
+                if displayedEntries.isEmpty && !isLoading {
                     VStack(spacing: 12) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 40))
                             .foregroundColor(.secondary)
-                        Text("No transcriptions")
+                        Text("No history")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.secondary)
                     }
@@ -217,13 +214,15 @@ struct TranscriptionHistoryView: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {
-                            ForEach(displayedTranscriptions) { transcription in
+                            ForEach(displayedEntries) { entry in
                                 TranscriptionListItem(
-                                    transcription: transcription,
-                                    isSelected: selectedTranscription == transcription,
-                                    isChecked: selectedTranscriptions.contains(transcription),
-                                    onSelect: { selectedTranscription = transcription },
-                                    onToggleCheck: { toggleSelection(transcription) }
+                                    entry: entry,
+                                    isSelected: selectedEntry == entry,
+                                    isChecked: entry.transcription.map { selectedTranscriptions.contains($0) } ?? false,
+                                    onSelect: { selectedEntry = entry },
+                                    onToggleCheck: entry.transcription.map { transcription in
+                                        { toggleSelection(transcription) }
+                                    }
                                 )
                             }
 
@@ -250,7 +249,7 @@ struct TranscriptionHistoryView: View {
                     }
                 }
 
-                if !displayedTranscriptions.isEmpty {
+                if !displayedTranscriptionEntries.isEmpty {
                     selectionToolbar
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -261,9 +260,15 @@ struct TranscriptionHistoryView: View {
 
     private var centerPaneView: some View {
         Group {
-            if let transcription = selectedTranscription {
+            if let selectedEntry {
+                switch selectedEntry {
+                case .transcription(let transcription):
                 TranscriptionDetailView(transcription: transcription, onInfoTap: openInfoPanel)
                     .id(transcription.id)
+                case .aiEdit(let record):
+                    AIEditHistoryDetailView(record: record, onInfoTap: openInfoPanel)
+                        .id(record.id)
+                }
             } else {
                 ScrollView {
                     VStack(spacing: 32) {
@@ -277,7 +282,7 @@ struct TranscriptionHistoryView: View {
                             Text("No Selection")
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(.secondary)
-                            Text("Select a transcription to view details")
+                            Text("Select a history item to view details")
                                 .font(.system(size: 14))
                                 .foregroundColor(.secondary)
                         }
@@ -301,9 +306,15 @@ struct TranscriptionHistoryView: View {
         VStack(spacing: 0) {
             AppPanelHeader(title: "Info", onClose: closeInfoPanel)
 
-            if let transcription = selectedTranscription {
+            if let selectedEntry {
+                switch selectedEntry {
+                case .transcription(let transcription):
                 TranscriptionInfoPanel(transcription: transcription)
                     .id(transcription.id)
+                case .aiEdit(let record):
+                    AIEditHistoryInfoPanel(record: record)
+                        .id(record.id)
+                }
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "info.circle")
@@ -319,7 +330,12 @@ struct TranscriptionHistoryView: View {
     }
 
     private var allSelected: Bool {
-        !displayedTranscriptions.isEmpty && displayedTranscriptions.allSatisfy { selectedTranscriptions.contains($0) }
+        !displayedTranscriptionEntries.isEmpty &&
+            displayedTranscriptionEntries.allSatisfy { selectedTranscriptions.contains($0) }
+    }
+
+    private var displayedTranscriptionEntries: [Transcription] {
+        displayedEntries.compactMap(\.transcription)
     }
 
     private var selectionToolbar: some View {
@@ -399,12 +415,16 @@ struct TranscriptionHistoryView: View {
 
         do {
             lastTimestamp = nil
-            let items = try modelContext.fetch(cursorQueryDescriptor())
-            displayedTranscriptions = items
-            lastTimestamp = items.last?.timestamp
-            hasMoreContent = items.count == pageSize
+            let page = try HistoryFetchService.fetchPage(
+                modelContext: modelContext,
+                searchText: searchText,
+                pageSize: pageSize
+            )
+            displayedEntries = page.entries
+            lastTimestamp = page.lastTimestamp
+            hasMoreContent = page.hasMore
         } catch {
-            print("Error loading transcriptions: \(error)")
+            print("Error loading history: \(error)")
         }
     }
 
@@ -416,18 +436,23 @@ struct TranscriptionHistoryView: View {
         defer { isLoading = false }
 
         do {
-            let newItems = try modelContext.fetch(cursorQueryDescriptor(after: lastTimestamp))
-            displayedTranscriptions.append(contentsOf: newItems)
-            self.lastTimestamp = newItems.last?.timestamp
-            hasMoreContent = newItems.count == pageSize
+            let page = try HistoryFetchService.fetchPage(
+                modelContext: modelContext,
+                searchText: searchText,
+                after: lastTimestamp,
+                pageSize: pageSize
+            )
+            displayedEntries.append(contentsOf: page.entries)
+            self.lastTimestamp = page.lastTimestamp
+            hasMoreContent = page.hasMore
         } catch {
-            print("Error loading more transcriptions: \(error)")
+            print("Error loading more history: \(error)")
         }
     }
     
     @MainActor
     private func resetPagination() {
-        displayedTranscriptions = []
+        displayedEntries = []
         lastTimestamp = nil
         hasMoreContent = true
         isLoading = false
@@ -444,8 +469,8 @@ struct TranscriptionHistoryView: View {
             }
         }
 
-        if selectedTranscription == transcription {
-            selectedTranscription = nil
+        if selectedEntry?.transcription == transcription {
+            selectedEntry = nil
         }
 
         selectedTranscriptions.remove(transcription)
@@ -485,20 +510,18 @@ struct TranscriptionHistoryView: View {
     private func selectAllTranscriptions() async {
         do {
             var allDescriptor = FetchDescriptor<Transcription>()
-
             if !searchText.isEmpty {
                 allDescriptor.predicate = #Predicate<Transcription> { transcription in
                     transcription.text.localizedStandardContains(searchText) ||
                     (transcription.enhancedText?.localizedStandardContains(searchText) ?? false)
                 }
             }
-
             allDescriptor.propertiesToFetch = [\.id]
             let allTranscriptions = try modelContext.fetch(allDescriptor)
-            let visibleIds = Set(displayedTranscriptions.map { $0.id })
+            let visibleIds = Set(displayedTranscriptionEntries.map { $0.id })
 
             await MainActor.run {
-                selectedTranscriptions = Set(displayedTranscriptions)
+                selectedTranscriptions = Set(displayedTranscriptionEntries)
 
                 for transcription in allTranscriptions {
                     if !visibleIds.contains(transcription.id) {

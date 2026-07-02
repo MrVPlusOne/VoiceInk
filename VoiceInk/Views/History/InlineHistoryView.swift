@@ -4,13 +4,13 @@ import SwiftData
 struct InlineHistoryView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var searchText = ""
-    @State private var expandedId: UUID?
+    @State private var expandedId: String?
     @State private var selectedTranscriptions: Set<Transcription> = []
     @State private var showDeleteConfirmation = false
     @State private var isPanelPresented = false
     @State private var panelMode: InlineHistoryPanelMode = .info
-    @State private var panelTranscriptionId: UUID?
-    @State private var displayedTranscriptions: [Transcription] = []
+    @State private var panelEntryId: String?
+    @State private var displayedEntries: [HistoryEntry] = []
     @State private var isLoading = false
     @State private var hasMoreContent = true
     @State private var lastTimestamp: Date?
@@ -20,6 +20,7 @@ struct InlineHistoryView: View {
     private let pageSize = 20
 
     @Query(Self.createLatestTranscriptionIndicatorDescriptor()) private var latestTranscriptionIndicator: [Transcription]
+    @Query(Self.createLatestAIEditIndicatorDescriptor()) private var latestAIEditIndicator: [AIEditHistoryRecord]
 
     private static func createLatestTranscriptionIndicatorDescriptor() -> FetchDescriptor<Transcription> {
         var descriptor = FetchDescriptor<Transcription>(
@@ -29,46 +30,31 @@ struct InlineHistoryView: View {
         return descriptor
     }
 
-    private func cursorQueryDescriptor(after timestamp: Date? = nil) -> FetchDescriptor<Transcription> {
-        var descriptor = FetchDescriptor<Transcription>(
-            sortBy: [SortDescriptor(\Transcription.timestamp, order: .reverse)]
+    private static func createLatestAIEditIndicatorDescriptor() -> FetchDescriptor<AIEditHistoryRecord> {
+        var descriptor = FetchDescriptor<AIEditHistoryRecord>(
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-
-        if let timestamp = timestamp {
-            if !searchText.isEmpty {
-                descriptor.predicate = #Predicate<Transcription> { transcription in
-                    (transcription.text.localizedStandardContains(searchText) ||
-                    (transcription.enhancedText?.localizedStandardContains(searchText) ?? false)) &&
-                    transcription.timestamp < timestamp
-                }
-            } else {
-                descriptor.predicate = #Predicate<Transcription> { transcription in
-                    transcription.timestamp < timestamp
-                }
-            }
-        } else if !searchText.isEmpty {
-            descriptor.predicate = #Predicate<Transcription> { transcription in
-                transcription.text.localizedStandardContains(searchText) ||
-                (transcription.enhancedText?.localizedStandardContains(searchText) ?? false)
-            }
-        }
-
-        descriptor.fetchLimit = pageSize
+        descriptor.fetchLimit = 1
         return descriptor
     }
 
     private var allSelected: Bool {
-        !displayedTranscriptions.isEmpty && displayedTranscriptions.allSatisfy { selectedTranscriptions.contains($0) }
+        !displayedTranscriptionEntries.isEmpty &&
+            displayedTranscriptionEntries.allSatisfy { selectedTranscriptions.contains($0) }
     }
 
-    private var panelTranscription: Transcription? {
-        guard let id = panelTranscriptionId else { return nil }
-        return displayedTranscriptions.first { $0.id == id }
+    private var displayedTranscriptionEntries: [Transcription] {
+        displayedEntries.compactMap(\.transcription)
     }
 
-    private func openPanel(mode: InlineHistoryPanelMode, transcriptionID: UUID? = nil) {
+    private var panelEntry: HistoryEntry? {
+        guard let id = panelEntryId else { return nil }
+        return displayedEntries.first { $0.id == id }
+    }
+
+    private func openPanel(mode: InlineHistoryPanelMode, entryID: String? = nil) {
         panelMode = mode
-        panelTranscriptionId = transcriptionID
+        panelEntryId = entryID
 
         isPanelPresented = true
     }
@@ -83,7 +69,7 @@ struct InlineHistoryView: View {
             topBar
             Divider()
 
-            if displayedTranscriptions.isEmpty && !isLoading {
+            if displayedEntries.isEmpty && !isLoading {
                 emptyStateView
             } else {
                 cardListView
@@ -122,7 +108,7 @@ struct InlineHistoryView: View {
         }
         .onChange(of: searchText) { _, _ in
             Task {
-                await resetPagination()
+                resetPagination()
                 await loadInitialContent()
             }
         }
@@ -130,9 +116,25 @@ struct InlineHistoryView: View {
             guard isViewCurrentlyVisible else { return }
             if newId != oldId {
                 Task {
-                    await resetPagination()
+                    resetPagination()
                     await loadInitialContent()
                 }
+            }
+        }
+        .onChange(of: latestAIEditIndicator.first?.updatedAt) { oldDate, newDate in
+            guard isViewCurrentlyVisible else { return }
+            if newDate != oldDate {
+                Task {
+                    resetPagination()
+                    await loadInitialContent()
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aiEditHistoryChanged)) { _ in
+            guard isViewCurrentlyVisible else { return }
+            Task {
+                resetPagination()
+                await loadInitialContent()
             }
         }
     }
@@ -145,7 +147,7 @@ struct InlineHistoryView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
                     .font(.system(size: 12))
-                TextField("Search transcriptions...", text: $searchText)
+                TextField("Search history...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
             }
@@ -239,10 +241,10 @@ struct InlineHistoryView: View {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 40))
                 .foregroundColor(.secondary)
-            Text(searchText.isEmpty ? "No transcriptions yet" : "No results found")
+            Text(searchText.isEmpty ? "No history yet" : "No results found")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundColor(.secondary)
-            Text(searchText.isEmpty ? "Your transcription history will appear here" : "Try a different search term")
+            Text(searchText.isEmpty ? "Your transcription and AI Edit history will appear here" : "Try a different search term")
                 .font(.system(size: 13))
                 .foregroundColor(.secondary.opacity(0.8))
             Spacer()
@@ -254,20 +256,22 @@ struct InlineHistoryView: View {
 
     private var cardListView: some View {
         Form {
-            ForEach(displayedTranscriptions) { transcription in
+            ForEach(displayedEntries) { entry in
                 Section {
                     HistoryCardRow(
-                        transcription: transcription,
-                        isExpanded: expandedId == transcription.id,
-                        isChecked: selectedTranscriptions.contains(transcription),
+                        entry: entry,
+                        isExpanded: expandedId == entry.id,
+                        isChecked: entry.transcription.map { selectedTranscriptions.contains($0) } ?? false,
                         onToggleExpand: {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                expandedId = expandedId == transcription.id ? nil : transcription.id
+                                expandedId = expandedId == entry.id ? nil : entry.id
                             }
                         },
-                        onToggleCheck: { toggleSelection(transcription) },
+                        onToggleCheck: entry.transcription.map { transcription in
+                            { toggleSelection(transcription) }
+                        },
                         onShowInfo: {
-                            openPanel(mode: .info, transcriptionID: transcription.id)
+                            openPanel(mode: .info, entryID: entry.id)
                         }
                     )
                 }
@@ -321,9 +325,15 @@ struct InlineHistoryView: View {
         VStack(spacing: 0) {
             AppPanelHeader(title: "Info", onClose: closePanel)
 
-            if let transcription = panelTranscription {
+            if let entry = panelEntry {
+                switch entry {
+                case .transcription(let transcription):
                 TranscriptionInfoPanel(transcription: transcription)
                     .id(transcription.id)
+                case .aiEdit(let record):
+                    AIEditHistoryInfoPanel(record: record)
+                        .id(record.id)
+                }
             } else {
                 Spacer()
             }
@@ -339,12 +349,16 @@ struct InlineHistoryView: View {
 
         do {
             lastTimestamp = nil
-            let items = try modelContext.fetch(cursorQueryDescriptor())
-            displayedTranscriptions = items
-            lastTimestamp = items.last?.timestamp
-            hasMoreContent = items.count == pageSize
+            let page = try HistoryFetchService.fetchPage(
+                modelContext: modelContext,
+                searchText: searchText,
+                pageSize: pageSize
+            )
+            displayedEntries = page.entries
+            lastTimestamp = page.lastTimestamp
+            hasMoreContent = page.hasMore
         } catch {
-            print("Error loading transcriptions: \(error)")
+            print("Error loading history: \(error)")
         }
     }
 
@@ -356,18 +370,23 @@ struct InlineHistoryView: View {
         defer { isLoading = false }
 
         do {
-            let newItems = try modelContext.fetch(cursorQueryDescriptor(after: lastTimestamp))
-            displayedTranscriptions.append(contentsOf: newItems)
-            self.lastTimestamp = newItems.last?.timestamp
-            hasMoreContent = newItems.count == pageSize
+            let page = try HistoryFetchService.fetchPage(
+                modelContext: modelContext,
+                searchText: searchText,
+                after: lastTimestamp,
+                pageSize: pageSize
+            )
+            displayedEntries.append(contentsOf: page.entries)
+            self.lastTimestamp = page.lastTimestamp
+            hasMoreContent = page.hasMore
         } catch {
-            print("Error loading more transcriptions: \(error)")
+            print("Error loading more history: \(error)")
         }
     }
 
     @MainActor
     private func resetPagination() {
-        displayedTranscriptions = []
+        displayedEntries = []
         lastTimestamp = nil
         hasMoreContent = true
         isLoading = false
@@ -394,11 +413,12 @@ struct InlineHistoryView: View {
             }
         }
 
-        if expandedId == transcription.id {
+        let entryId = HistoryEntry.transcription(transcription).id
+        if expandedId == entryId {
             expandedId = nil
         }
-        if panelTranscriptionId == transcription.id {
-            panelTranscriptionId = nil
+        if panelEntryId == entryId {
+            panelEntryId = nil
             closePanel()
         }
 
@@ -427,20 +447,18 @@ struct InlineHistoryView: View {
     private func selectAllTranscriptions() async {
         do {
             var allDescriptor = FetchDescriptor<Transcription>()
-
             if !searchText.isEmpty {
                 allDescriptor.predicate = #Predicate<Transcription> { transcription in
                     transcription.text.localizedStandardContains(searchText) ||
                     (transcription.enhancedText?.localizedStandardContains(searchText) ?? false)
                 }
             }
-
             allDescriptor.propertiesToFetch = [\.id]
             let allTranscriptions = try modelContext.fetch(allDescriptor)
-            let visibleIds = Set(displayedTranscriptions.map { $0.id })
+            let visibleIds = Set(displayedTranscriptionEntries.map { $0.id })
 
             await MainActor.run {
-                selectedTranscriptions = Set(displayedTranscriptions)
+                selectedTranscriptions = Set(displayedTranscriptionEntries)
 
                 for transcription in allTranscriptions {
                     if !visibleIds.contains(transcription.id) {
@@ -463,25 +481,31 @@ private enum InlineHistoryPanelMode {
 // MARK: - History Card Row
 
 private struct HistoryCardRow: View {
-    let transcription: Transcription
+    let entry: HistoryEntry
     let isExpanded: Bool
     let isChecked: Bool
     let onToggleExpand: () -> Void
-    let onToggleCheck: () -> Void
+    let onToggleCheck: (() -> Void)?
     let onShowInfo: () -> Void
 
     @State private var selectedTab: TranscriptionTab = .original
 
     private var displayText: String {
-        switch selectedTab {
-        case .original:
-            return transcription.text
-        case .enhanced:
-            return transcription.enhancedText ?? ""
+        switch entry {
+        case .transcription(let transcription):
+            switch selectedTab {
+            case .original:
+                return transcription.text
+            case .enhanced:
+                return transcription.enhancedText ?? ""
+            }
+        case .aiEdit(let record):
+            return record.generatedText
         }
     }
 
     private var hasAudioFile: Bool {
+        guard let transcription = entry.transcription else { return false }
         if let urlString = transcription.audioFileURL,
            let url = URL(string: urlString),
            FileManager.default.fileExists(atPath: url.path) {
@@ -493,20 +517,41 @@ private struct HistoryCardRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Toggle("", isOn: Binding(
-                    get: { isChecked },
-                    set: { _ in onToggleCheck() }
-                ))
-                .toggleStyle(CircularCheckboxStyle())
-                .labelsHidden()
+                if let onToggleCheck {
+                    Toggle("", isOn: Binding(
+                        get: { isChecked },
+                        set: { _ in onToggleCheck() }
+                    ))
+                    .toggleStyle(CircularCheckboxStyle())
+                    .labelsHidden()
+                } else {
+                    Image(systemName: entry.kindSystemImage)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: 18, height: 18)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(transcription.timestamp, format: .dateTime.month(.abbreviated).day().hour().minute())
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        Text(entry.timestamp, format: .dateTime.month(.abbreviated).day().hour().minute())
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+
+                        if entry.aiEditRecord != nil {
+                            Text(entry.kindLabel)
+                                .font(.system(size: 10, weight: .semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(AppTheme.Surface.card)
+                                )
+                                .foregroundColor(.secondary)
+                        }
+                    }
 
                     if !isExpanded {
-                        Text(transcription.enhancedText ?? transcription.text)
+                        Text(entry.previewText)
                             .font(.system(size: 13))
                             .lineLimit(2)
                             .foregroundColor(.primary)
@@ -535,58 +580,101 @@ private struct HistoryCardRow: View {
 
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Tabs
-            if transcription.enhancedText != nil {
-                HStack(spacing: 4) {
-                    ForEach(TranscriptionTab.allCases, id: \.self) { tab in
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                selectedTab = tab
-                            }
-                        } label: {
-                            Text(LocalizedStringKey(tab.rawValue))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(selectedTab == tab ? .primary : .secondary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule()
-                                        .fill(selectedTab == tab ? AppTheme.Surface.controlActive : Color.clear)
-                                )
+            switch entry {
+            case .transcription(let transcription):
+                transcriptionExpandedContent(transcription)
+            case .aiEdit(let record):
+                aiEditExpandedContent(record)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptionExpandedContent(_ transcription: Transcription) -> some View {
+        if transcription.enhancedText != nil {
+            HStack(spacing: 4) {
+                ForEach(TranscriptionTab.allCases, id: \.self) { tab in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedTab = tab
                         }
-                        .buttonStyle(.plain)
+                    } label: {
+                        Text(LocalizedStringKey(tab.rawValue))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(selectedTab == tab ? .primary : .secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(selectedTab == tab ? AppTheme.Surface.controlActive : Color.clear)
+                            )
                     }
-                    Spacer()
+                    .buttonStyle(.plain)
                 }
+                Spacer()
+            }
+        }
+
+        ScrollView {
+            MarkdownContentView(
+                displayText,
+                fontSize: 14,
+                foregroundColor: AppTheme.Text.primary
+            )
+        }
+        .frame(maxHeight: 350)
+        .hoverCopyButton(textToCopy: displayText)
+
+        if hasAudioFile, let urlString = transcription.audioFileURL,
+           let url = URL(string: urlString) {
+            Divider()
+            AudioPlayerView(url: url, transcription: transcription, onInfoTap: onShowInfo)
+                .padding(.vertical, 4)
+        } else {
+            infoButtonRow
+        }
+    }
+
+    private func aiEditExpandedContent(_ record: AIEditHistoryRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(record.mode.displayName, systemImage: record.outcome.systemImage)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Instruction")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text(record.instruction)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+                    .textSelection(.enabled)
             }
 
             ScrollView {
                 MarkdownContentView(
-                    displayText,
+                    record.generatedText,
                     fontSize: 14,
                     foregroundColor: AppTheme.Text.primary
                 )
             }
             .frame(maxHeight: 350)
-            .hoverCopyButton(textToCopy: displayText)
+            .hoverCopyButton(textToCopy: record.generatedText)
 
-            if hasAudioFile, let urlString = transcription.audioFileURL,
-               let url = URL(string: urlString) {
-                Divider()
-                AudioPlayerView(url: url, transcription: transcription, onInfoTap: onShowInfo)
-                    .padding(.vertical, 4)
-            } else {
-                HStack {
-                    Spacer()
-                    Button(action: onShowInfo) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("View details")
-                }
+            infoButtonRow
+        }
+    }
+
+    private var infoButtonRow: some View {
+        HStack {
+            Spacer()
+            Button(action: onShowInfo) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
             }
+            .buttonStyle(.plain)
+            .help("View details")
         }
     }
 }

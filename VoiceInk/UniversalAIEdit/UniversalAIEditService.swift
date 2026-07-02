@@ -65,7 +65,9 @@ final class UniversalAIEditService {
             text: filtered,
             provider: provider,
             modelName: modelName,
-            duration: Date().timeIntervalSince(start)
+            duration: Date().timeIntervalSince(start),
+            aiRequestSystemMessage: systemPrompt,
+            aiRequestUserMessage: userPayload
         )
     }
 

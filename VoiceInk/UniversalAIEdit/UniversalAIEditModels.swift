@@ -315,6 +315,8 @@ struct UniversalAIEditResult: Equatable {
     let provider: AIProvider
     let modelName: String
     let duration: TimeInterval
+    let aiRequestSystemMessage: String
+    let aiRequestUserMessage: String
 }
 
 enum UniversalAIEditError: LocalizedError {

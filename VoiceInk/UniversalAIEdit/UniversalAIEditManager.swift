@@ -26,6 +26,7 @@ final class UniversalAIEditManager: ObservableObject {
     private var voiceMeterTask: Task<Void, Never>?
     private weak var engine: VoiceInkEngine?
     private var targetApp: NSRunningApplication?
+    private var currentHistoryRecord: AIEditHistoryRecord?
 
     private init() {}
 
@@ -54,14 +55,17 @@ final class UniversalAIEditManager: ObservableObject {
         if isVoiceRecording {
             Task { @MainActor in
                 await cancelVoiceInstruction()
+                discardPendingHistoryRecordIfNeeded(note: String(localized: "Panel closed"))
                 hidePanel()
             }
         } else {
+            discardPendingHistoryRecordIfNeeded(note: String(localized: "Panel closed"))
             hidePanel()
         }
     }
 
     func discardPreview() {
+        discardPendingHistoryRecordIfNeeded(note: String(localized: "Preview discarded"))
         generatedText = ""
         lastResult = nil
         phase = .ready
@@ -77,6 +81,7 @@ final class UniversalAIEditManager: ObservableObject {
         }
 
         Task { @MainActor in
+            discardPendingHistoryRecordIfNeeded(note: String(localized: "Regenerated"))
             phase = .generating
             statusText = String(localized: "Generating...")
             do {
@@ -89,6 +94,12 @@ final class UniversalAIEditManager: ObservableObject {
                 )
                 generatedText = result.text
                 lastResult = result
+                currentHistoryRecord = persistHistoryRecord(
+                    result: result,
+                    instruction: instruction,
+                    mode: mode,
+                    context: context
+                )
                 phase = .preview
                 statusText = String(format: String(localized: "Generated with %@"), result.modelName)
             } catch {
@@ -100,6 +111,7 @@ final class UniversalAIEditManager: ObservableObject {
     func copyResult() {
         guard !generatedText.isEmpty else { return }
         _ = ClipboardManager.copyToClipboard(generatedText)
+        updateCurrentHistoryRecord(outcome: .copied, clearCurrentRecord: false)
         NotificationManager.shared.showNotification(
             title: String(localized: "AI Edit result copied"),
             type: .success
@@ -116,6 +128,7 @@ final class UniversalAIEditManager: ObservableObject {
 
             guard let targetApp else {
                 _ = ClipboardManager.copyToClipboard(text)
+                updateCurrentHistoryRecord(outcome: .copied, note: UniversalAIEditError.targetUnavailable.localizedDescription)
                 NotificationManager.shared.showNotification(
                     title: UniversalAIEditError.targetUnavailable.localizedDescription,
                     type: .warning,
@@ -127,6 +140,7 @@ final class UniversalAIEditManager: ObservableObject {
 
             guard AXIsProcessTrusted() else {
                 _ = ClipboardManager.copyToClipboard(text)
+                updateCurrentHistoryRecord(outcome: .copied, note: UniversalAIEditError.pasteUnavailable.localizedDescription)
                 NotificationManager.shared.showNotification(
                     title: UniversalAIEditError.pasteUnavailable.localizedDescription,
                     type: .warning,
@@ -143,6 +157,7 @@ final class UniversalAIEditManager: ObservableObject {
 
             if let validationError = validateTargetFocus(targetApp: targetApp, snapshot: context?.target) {
                 _ = ClipboardManager.copyToClipboard(text)
+                updateCurrentHistoryRecord(outcome: .copied, note: validationError.localizedDescription)
                 NotificationManager.shared.showNotification(
                     title: validationError.localizedDescription,
                     type: .warning,
@@ -153,12 +168,14 @@ final class UniversalAIEditManager: ObservableObject {
 
             let pasteResult = await CursorPaster.pasteAtCursorAndWaitUntilPosted(text)
             if pasteResult.didPostPasteCommand {
+                updateCurrentHistoryRecord(outcome: .applied)
                 NotificationManager.shared.showNotification(
                     title: String(localized: "AI Edit applied"),
                     type: .success
                 )
             } else {
                 _ = ClipboardManager.copyToClipboard(text)
+                updateCurrentHistoryRecord(outcome: .copied, note: UniversalAIEditError.pasteUnavailable.localizedDescription)
                 NotificationManager.shared.showNotification(
                     title: UniversalAIEditError.pasteUnavailable.localizedDescription,
                     type: .warning,
@@ -183,6 +200,7 @@ final class UniversalAIEditManager: ObservableObject {
         statusText = String(localized: "Capturing context...")
         generatedText = ""
         lastResult = nil
+        currentHistoryRecord = nil
         instruction = ""
         let configuration = resolvedEnhancementConfiguration(engine: engine)
         let capturedContext = await contextCaptureService.capture(configuration: configuration)
@@ -352,6 +370,59 @@ final class UniversalAIEditManager: ObservableObject {
         if reset {
             voiceMeterLevel = 0
             voiceMeterSamples = []
+        }
+    }
+
+    private func persistHistoryRecord(
+        result: UniversalAIEditResult,
+        instruction: String,
+        mode: UniversalAIEditMode,
+        context: UniversalAIEditContext
+    ) -> AIEditHistoryRecord? {
+        guard let engine else { return nil }
+        let record = AIEditHistoryRecord(
+            instruction: instruction.trimmingCharacters(in: .whitespacesAndNewlines),
+            mode: mode,
+            sourceText: context.selectedText,
+            generatedText: result.text,
+            providerName: result.provider.rawValue,
+            modelName: result.modelName,
+            generationDuration: result.duration,
+            target: context.target,
+            aiRequestSystemMessage: result.aiRequestSystemMessage,
+            aiRequestUserMessage: result.aiRequestUserMessage
+        )
+
+        engine.modelContext.insert(record)
+        saveHistoryRecord(record)
+        return record
+    }
+
+    private func updateCurrentHistoryRecord(
+        outcome: AIEditHistoryOutcome,
+        note: String? = nil,
+        clearCurrentRecord: Bool = true
+    ) {
+        guard let currentHistoryRecord else { return }
+        currentHistoryRecord.recordOutcome(outcome, note: note)
+        saveHistoryRecord(currentHistoryRecord)
+        if clearCurrentRecord {
+            self.currentHistoryRecord = nil
+        }
+    }
+
+    private func discardPendingHistoryRecordIfNeeded(note: String) {
+        guard currentHistoryRecord?.outcome == .generated else { return }
+        updateCurrentHistoryRecord(outcome: .discarded, note: note)
+    }
+
+    private func saveHistoryRecord(_ record: AIEditHistoryRecord) {
+        guard let engine else { return }
+        do {
+            try engine.modelContext.save()
+            NotificationCenter.default.post(name: .aiEditHistoryChanged, object: record)
+        } catch {
+            print("Error saving AI Edit history record: \(error.localizedDescription)")
         }
     }
 
