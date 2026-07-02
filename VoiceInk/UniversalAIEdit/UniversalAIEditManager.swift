@@ -490,7 +490,10 @@ final class UniversalAIEditManager: ObservableObject {
 
         let url = engine.recordingsDirectory.appendingPathComponent("ai_edit_instruction_\(UUID().uuidString).wav")
         do {
-            try await instructionRecorder.startRecording(toOutputFile: url)
+            try await instructionRecorder.startRecording(
+                toOutputFile: url,
+                audioBehavior: .preserveSystemOutput
+            )
             instructionAudioURL = url
             isVoiceRecording = true
             startVoiceMetering()

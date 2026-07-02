@@ -21,6 +21,7 @@ class Recorder: NSObject, ObservableObject {
     private var audioMuteTask: Task<Void, Never>?
     private var mediaPauseTask: Task<Void, Never>?
     private var audioRestorationTask: Task<Void, Never>?
+    private var currentAudioBehavior: RecorderAudioBehavior = .interruptSystemOutput
     private let smoothedValuesLock = NSLock()
     private var smoothedAverage: Float = 0
     private var smoothedPeak: Float = 0
@@ -113,8 +114,12 @@ class Recorder: NSObject, ObservableObject {
         }
     }
 
-    func startRecording(toOutputFile url: URL) async throws {
+    func startRecording(
+        toOutputFile url: URL,
+        audioBehavior: RecorderAudioBehavior = .interruptSystemOutput
+    ) async throws {
         deviceManager.isRecordingActive = true
+        currentAudioBehavior = audioBehavior
 
         let currentDeviceID = deviceManager.getCurrentDevice()
         let lastDeviceID = UserDefaults.standard.string(forKey: "lastUsedMicrophoneDeviceID")
@@ -133,7 +138,9 @@ class Recorder: NSObject, ObservableObject {
         audioRestorationTask?.cancel()
         audioRestorationTask = nil
         audioMeterUpdateTimer?.cancel()
-        muteSystemAudio()
+        if audioBehavior.interruptsSystemOutput {
+            muteSystemAudio()
+        }
 
         let coreAudioRecorder = recorder ?? CoreAudioRecorder()
         coreAudioRecorder.onAudioChunk = onAudioChunk
@@ -153,7 +160,9 @@ class Recorder: NSObject, ObservableObject {
             }
 
             startAudioMeterTimer()
-            pauseMedia()
+            if audioBehavior.interruptsSystemOutput {
+                pauseMedia()
+            }
         } catch {
             logger.error("Failed to start recording deviceID=\(deviceID, privacy: .public) file=\(url.lastPathComponent, privacy: .public) error=\(error, privacy: .public)")
             await stopRecording()
@@ -188,10 +197,15 @@ class Recorder: NSObject, ObservableObject {
         audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
 
         audioRestorationTask?.cancel()
-        audioRestorationTask = Task {
-            await mediaController.unmuteSystemAudio()
-            await playbackController.resumeMedia()
+        if currentAudioBehavior.interruptsSystemOutput {
+            audioRestorationTask = Task {
+                await mediaController.unmuteSystemAudio()
+                await playbackController.resumeMedia()
+            }
+        } else {
+            audioRestorationTask = nil
         }
+        currentAudioBehavior = .interruptSystemOutput
         deviceManager.isRecordingActive = false
     }
 
@@ -318,6 +332,15 @@ class Recorder: NSObject, ObservableObject {
             NotificationCenter.default.removeObserver(observer)
         }
         recorder?.teardown()
+    }
+}
+
+enum RecorderAudioBehavior: Equatable {
+    case interruptSystemOutput
+    case preserveSystemOutput
+
+    var interruptsSystemOutput: Bool {
+        self == .interruptSystemOutput
     }
 }
 
