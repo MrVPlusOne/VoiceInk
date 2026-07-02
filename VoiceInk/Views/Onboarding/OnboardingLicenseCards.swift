@@ -4,7 +4,6 @@ import SwiftUI
 struct OnboardingLicenseSetupCard: View {
     @ObservedObject var licenseViewModel: LicenseViewModel
 
-    let onPurchase: () -> Void
     let onStartTrial: () -> Void
     let onActivate: () -> Void
 
@@ -67,17 +66,9 @@ struct OnboardingLicenseSetupCard: View {
     private var licenseActions: some View {
         HStack(spacing: 12) {
             OnboardingLicenseActionRow(
-                title: "Purchase License",
-                subtitle: "Lifetime access.",
-                systemImage: "cart.fill",
-                isEnabled: true,
-                action: onPurchase
-            )
-
-            OnboardingLicenseActionRow(
-                title: "Start 7-day Trial",
-                subtitle: "Use VoiceInk now.",
-                systemImage: "calendar",
+                title: "Continue",
+                subtitle: "Use this local fork without activation.",
+                systemImage: "checkmark.seal.fill",
                 isEnabled: true,
                 action: onStartTrial
             )

@@ -181,9 +181,6 @@ struct OnboardingView: View {
                                 isTranscriptionSetupReady: isTranscriptionSetupReady
                             )
                         },
-                        onPurchase: {
-                            coordinator.licenseViewModel.openPurchaseLink()
-                        },
                         onStartTrial: {
                             coordinator.flow.startLicenseTrial(
                                 isTranscriptionSetupReady: isTranscriptionSetupReady

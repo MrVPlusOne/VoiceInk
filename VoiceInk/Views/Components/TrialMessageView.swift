@@ -35,20 +35,10 @@ struct TrialMessageView: View {
                 Button(action: {
                     onAddLicenseKey?()
                 }) {
-                    Text("Enter License")
+                    Text("Open Settings")
                         .font(.system(size: 13, weight: .medium))
                 }
                 .buttonStyle(.bordered)
-
-                Button(action: {
-                    if let url = URL(string: "https://tryvoiceink.com/buy") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }) {
-                    Text("Buy License")
-                        .font(.system(size: 13, weight: .medium))
-                }
-                .buttonStyle(.borderedProminent)
             }
         }
         .padding()

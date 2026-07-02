@@ -2,9 +2,6 @@ import SwiftUI
 
 struct LicenseManagementView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var licenseViewModel = LicenseViewModel()
-    @State private var showingDeactivateConfirmation = false
-    @State private var didCopyLicenseKey = false
     @State private var isShowingReportPanel = false
 
     private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
@@ -24,11 +21,8 @@ struct LicenseManagementView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if isLicensed {
-                        activeContent
-                    } else {
-                        inactiveContent
-                    }
+                    localForkCard
+                    resourcesPanel
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 18)
@@ -48,17 +42,6 @@ struct LicenseManagementView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: 600, minHeight: 500)
-        .confirmationDialog(
-            "Deactivate License?",
-            isPresented: $showingDeactivateConfirmation
-        ) {
-            Button("Deactivate License", role: .destructive) {
-                licenseViewModel.removeLicense()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("This removes the license from this Mac. You can activate it again later.")
-        }
     }
 
     private var bottomReportDismissLayer: some View {
@@ -95,41 +78,16 @@ struct LicenseManagementView: View {
         }
     }
 
-    private var isLicensed: Bool {
-        if case .licensed = licenseViewModel.licenseState {
-            return true
-        }
-
-        return false
-    }
-
-    private var inactiveContent: some View {
-        VStack(spacing: 14) {
-            purchasePanel
-            activationPanel
-            resourcesPanel
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var activeContent: some View {
-        VStack(spacing: 14) {
-            activeLicenseCard
-            resourcesPanel
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var purchasePanel: some View {
+    private var localForkCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .center, spacing: 18) {
                 LicenseProMark()
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("VoiceInk Pro")
+                    Text("Local Fork")
                         .font(licenseTitleFont)
 
-                    Text(trialSummary)
+                    Text(String(format: String(localized: "Version %@ (%@)"), appVersion, appBuild))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -137,83 +95,14 @@ struct LicenseManagementView: View {
                 Spacer()
             }
 
-            HStack(spacing: 10) {
-                BenefitPill(title: "Lifetime access", systemImage: "infinity", tint: neutralIconColor)
-                BenefitPill(title: "Free updates", systemImage: "arrow.down.circle.fill", tint: neutralIconColor)
-                BenefitPill(title: "Priority support", systemImage: "bubble.left.and.bubble.right.fill", tint: neutralIconColor)
-            }
-
-            LicenseActionButton(
-                title: "Buy License",
-                systemImage: "checkmark.seal.fill",
-                iconColor: neutralIconColor,
-                fillsWidth: true
-            ) {
-                licenseViewModel.openPurchaseLink()
-            }
+            Text("License activation and license portal access are disabled in this fork. All local features are available without contacting a licensing server.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppMaterialCardBackground(cornerRadius: 14))
-    }
-
-    private var activationPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Have a license key?")
-                .font(.headline)
-
-            HStack(spacing: 10) {
-                TextField("License key", text: $licenseViewModel.licenseKey)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                    .textCase(.uppercase)
-
-                LicenseActionButton(
-                    title: "Activate",
-                    systemImage: "key.fill",
-                    iconColor: neutralIconColor,
-                    fixedWidth: 112,
-                    isLoading: licenseViewModel.isValidating,
-                    loadingTitle: "Activating"
-                ) {
-                    Task { await licenseViewModel.validateLicense() }
-                }
-                .disabled(licenseViewModel.isValidating)
-            }
-
-            if let message = licenseViewModel.validationMessage {
-                ValidationMessage(
-                    message: message,
-                    isSuccess: licenseViewModel.validationSuccess
-                )
-            }
-        }
-        .padding(18)
-        .background(AppMaterialCardBackground(cornerRadius: 14))
-    }
-
-    private var activeLicenseCard: some View {
-        LicenseActiveSummaryCard(
-            title: "VoiceInk Pro",
-            subtitle: String(format: String(localized: "Version %@ (%@)"), appVersion, appBuild),
-            licenseKey: licenseViewModel.licenseKey,
-            didCopyLicenseKey: didCopyLicenseKey,
-            onCopyLicenseKey: copyLicenseKey
-        ) {
-            HStack(spacing: 10) {
-                ResourceButton(title: "Manage License", systemImage: "person.crop.circle.badge.checkmark", tint: neutralIconColor) {
-                    openLicensePortal()
-                }
-
-                ResourceButton(
-                    title: "Deactivate",
-                    systemImage: "xmark.circle.fill",
-                    tint: neutralIconColor
-                ) {
-                    showingDeactivateConfirmation = true
-                }
-            }
-        }
     }
 
     private var resourcesPanel: some View {
@@ -251,15 +140,6 @@ struct LicenseManagementView: View {
             }
 
             ResourceLinkRow(
-                title: "Affiliate Program",
-                subtitle: "Earn 30% from referrals",
-                systemImage: "link.badge.plus",
-                tint: neutralIconColor
-            ) {
-                openURL("https://tryvoiceink.com/affiliate")
-            }
-
-            ResourceLinkRow(
                 title: "Documentation",
                 subtitle: "Setup, features, and settings",
                 systemImage: "book.fill",
@@ -277,26 +157,6 @@ struct LicenseManagementView: View {
                 openURL("https://www.youtube.com/@tryvoiceink/videos")
             }
 
-            if isLicensed {
-                ResourceLinkRow(
-                    title: "Changelog",
-                    subtitle: "Latest fixes and releases",
-                    systemImage: "list.bullet.clipboard.fill",
-                    tint: neutralIconColor
-                ) {
-                    openURL("https://github.com/Beingpax/VoiceInk/releases")
-                }
-            } else {
-                ResourceLinkRow(
-                    title: "Lost Key?",
-                    subtitle: "Recover or manage your license",
-                    systemImage: "key.fill",
-                    tint: neutralIconColor
-                ) {
-                    openLicensePortal()
-                }
-            }
-
             ResourceLinkRow(
                 title: "Report or Feedback",
                 subtitle: "Send a note or join Discord",
@@ -305,41 +165,6 @@ struct LicenseManagementView: View {
                 action: showReportPanel
             )
         }
-    }
-
-    private var trialSummary: String {
-        switch licenseViewModel.licenseState {
-        case .unlicensed:
-            return String(localized: "License required")
-        case .licensed:
-            return String(localized: "Licensed")
-        case .trial(let daysRemaining):
-            return String(localized: "\(daysRemaining) days left in trial")
-        case .trialExpired:
-            return String(localized: "Trial ended")
-        }
-    }
-
-    private func copyLicenseKey() {
-        let key = licenseViewModel.licenseKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
-
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(key, forType: .string)
-
-        withAnimation(.snappy(duration: 0.22)) {
-            didCopyLicenseKey = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
-            withAnimation(.snappy(duration: 0.22)) {
-                didCopyLicenseKey = false
-            }
-        }
-    }
-
-    private func openLicensePortal() {
-        openURL("https://polar.sh/beingpax/portal/request")
     }
 
     private func openURL(_ urlString: String) {
