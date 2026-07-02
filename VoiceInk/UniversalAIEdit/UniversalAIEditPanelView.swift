@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct UniversalAIEditPanelView: View {
+    static let preferredContentSize = NSSize(width: 720, height: 680)
+
     @ObservedObject var manager: UniversalAIEditManager
     @FocusState private var instructionFocused: Bool
     @State private var contextDetailsExpanded = false
@@ -23,7 +25,7 @@ struct UniversalAIEditPanelView: View {
             .padding(.top, 12)
             .padding(.bottom, 14)
         }
-        .frame(width: 720, height: 680)
+        .frame(width: Self.preferredContentSize.width, height: Self.preferredContentSize.height)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(AppTheme.Surface.window)

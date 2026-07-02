@@ -209,11 +209,14 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     private func showPanel() {
-        let size = NSSize(width: 660, height: 600)
+        let size = UniversalAIEditPanelView.preferredContentSize
         let newPanel = UniversalAIEditPanel(manager: self, size: size)
         let view = UniversalAIEditPanelView(manager: self)
         let controller = NSHostingController(rootView: view)
+        controller.view.frame = NSRect(origin: .zero, size: size)
         newPanel.contentView = controller.view
+        newPanel.contentMinSize = size
+        newPanel.setContentSize(size)
         hostingController = controller
         panel = newPanel
         newPanel.makeKeyAndOrderFront(nil)
