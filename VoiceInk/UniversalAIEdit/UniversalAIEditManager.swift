@@ -27,6 +27,8 @@ final class UniversalAIEditManager: ObservableObject {
     private weak var engine: VoiceInkEngine?
     private var targetApp: NSRunningApplication?
     private var currentHistoryRecord: AIEditHistoryRecord?
+    private var panelSessionID: UUID?
+    private var activeGenerationID: UUID?
 
     private init() {}
 
@@ -79,30 +81,48 @@ final class UniversalAIEditManager: ObservableObject {
             fail(UniversalAIEditError.missingEnhancementService)
             return
         }
+        guard let panelSessionID else { return }
+
+        let generationID = UUID()
+        activeGenerationID = generationID
+        let requestInstruction = instruction
+        let requestMode = mode
+        let requestContext = context
 
         Task { @MainActor in
+            guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
+                return
+            }
             discardPendingHistoryRecordIfNeeded(note: String(localized: "Regenerated"))
             phase = .generating
             statusText = String(localized: "Generating...")
             do {
                 let result = try await editService.generate(
-                    instruction: instruction,
-                    mode: mode,
-                    context: context,
+                    instruction: requestInstruction,
+                    mode: requestMode,
+                    context: requestContext,
                     enhancementService: enhancementService,
                     modelContext: engine.modelContext
                 )
+                guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
+                    return
+                }
+                activeGenerationID = nil
                 generatedText = result.text
                 lastResult = result
                 currentHistoryRecord = persistHistoryRecord(
                     result: result,
-                    instruction: instruction,
-                    mode: mode,
-                    context: context
+                    instruction: requestInstruction,
+                    mode: requestMode,
+                    context: requestContext
                 )
                 phase = .preview
                 statusText = String(format: String(localized: "Generated with %@"), result.modelName)
             } catch {
+                guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
+                    return
+                }
+                activeGenerationID = nil
                 fail(error)
             }
         }
@@ -201,6 +221,8 @@ final class UniversalAIEditManager: ObservableObject {
         generatedText = ""
         lastResult = nil
         currentHistoryRecord = nil
+        panelSessionID = UUID()
+        activeGenerationID = nil
         instruction = ""
         let configuration = resolvedEnhancementConfiguration(engine: engine)
         let capturedContext = await contextCaptureService.capture(configuration: configuration)
@@ -244,6 +266,8 @@ final class UniversalAIEditManager: ObservableObject {
         panel?.orderOut(nil)
         panel = nil
         hostingController = nil
+        panelSessionID = nil
+        activeGenerationID = nil
         if reactivateTarget {
             targetApp?.activate(options: [])
         }
@@ -371,6 +395,12 @@ final class UniversalAIEditManager: ObservableObject {
             voiceMeterLevel = 0
             voiceMeterSamples = []
         }
+    }
+
+    private func isCurrentGeneration(sessionID: UUID, generationID: UUID) -> Bool {
+        panelSessionID == sessionID &&
+            activeGenerationID == generationID &&
+            panel?.isVisible == true
     }
 
     private func persistHistoryRecord(
