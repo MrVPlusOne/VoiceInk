@@ -22,6 +22,15 @@ enum UniversalAIEditMode: String, Equatable {
             return "insert_new"
         }
     }
+
+    var toggled: UniversalAIEditMode {
+        switch self {
+        case .replaceSelection:
+            return .insertNew
+        case .insertNew:
+            return .replaceSelection
+        }
+    }
 }
 
 enum UniversalAIEditPhase: Equatable {
@@ -123,6 +132,18 @@ enum UniversalAIEditFlow {
         }
 
         return !phase.isBusy
+    }
+
+    static func canToggleMode(phase: UniversalAIEditPhase) -> Bool {
+        !phase.isBusy
+    }
+
+    static func toggledMode(
+        from mode: UniversalAIEditMode,
+        phase: UniversalAIEditPhase
+    ) -> UniversalAIEditMode? {
+        guard canToggleMode(phase: phase) else { return nil }
+        return mode.toggled
     }
 
     static func escapeAction(

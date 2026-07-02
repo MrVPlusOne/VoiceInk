@@ -291,6 +291,23 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!UniversalAIEditFlow.canToggleVoiceInstruction(phase: .transcribingInstruction, isVoiceRecording: true))
     }
 
+    @Test func tabModeToggleRespectsBusyPhases() {
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .ready) == .replaceSelection)
+        #expect(UniversalAIEditFlow.toggledMode(from: .replaceSelection, phase: .preview) == .insertNew)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .failed("Try again")) == .replaceSelection)
+
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .capturing) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .listening) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .transcribingInstruction) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .generating) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .applying) == nil)
+    }
+
+    @Test func previewBoxHeightLeavesComposerBreathingRoom() {
+        #expect(UniversalAIEditPanelView.previewBoxHeight < UniversalAIEditPanelView.preferredContentSize.height * 0.4)
+        #expect(UniversalAIEditPanelView.previewBoxHeight >= 240)
+    }
+
     @Test func generatedInputSnapshotChangesWhenInstructionModeOrContextChanges() {
         let context = UniversalAIEditContext(
             capturedAt: Date(timeIntervalSince1970: 0),

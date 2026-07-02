@@ -3,6 +3,7 @@ import SwiftUI
 
 struct UniversalAIEditPanelView: View {
     static let preferredContentSize = NSSize(width: 720, height: 680)
+    static let previewBoxHeight: CGFloat = 260
 
     @ObservedObject var manager: UniversalAIEditManager
     @FocusState private var instructionFocused: Bool
@@ -18,6 +19,7 @@ struct UniversalAIEditPanelView: View {
             VStack(alignment: .leading, spacing: 12) {
                 compactContextSummary
                 previewArea
+                Spacer(minLength: 0)
                 composerArea
             }
             .padding(.horizontal, 16)
@@ -82,7 +84,7 @@ struct UniversalAIEditPanelView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 214)
-            .disabled(manager.phase.isBusy)
+            .disabled(!manager.canToggleMode)
 
             Button {
                 manager.close()
@@ -388,7 +390,7 @@ struct UniversalAIEditPanelView: View {
                 samples: manager.voiceMeterSamples
             )
 
-            Text("Esc cancels")
+            Text("Esc cancels, typing switches to manual")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(AppTheme.Text.muted)
         }
@@ -479,7 +481,7 @@ struct UniversalAIEditPanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: Self.previewBoxHeight, maxHeight: Self.previewBoxHeight, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(AppTheme.Surface.subtle)
@@ -489,8 +491,7 @@ struct UniversalAIEditPanelView: View {
                     .stroke(AppTheme.Border.subtle, lineWidth: 1)
             )
         }
-        .frame(maxHeight: .infinity)
-        .layoutPriority(1)
+        .layoutPriority(0)
     }
 
     @ViewBuilder

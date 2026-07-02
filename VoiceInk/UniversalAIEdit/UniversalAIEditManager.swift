@@ -75,6 +75,10 @@ final class UniversalAIEditManager: ObservableObject {
         )
     }
 
+    var canToggleMode: Bool {
+        UniversalAIEditFlow.canToggleMode(phase: phase)
+    }
+
     var primaryAction: UniversalAIEditPrimaryAction {
         UniversalAIEditFlow.primaryAction(
             hasGeneratedText: hasGeneratedText,
@@ -188,6 +192,14 @@ final class UniversalAIEditManager: ObservableObject {
         case .closePanel:
             close()
         }
+    }
+
+    func handleTabKey() {
+        guard let nextMode = UniversalAIEditFlow.toggledMode(from: mode, phase: phase) else {
+            return
+        }
+
+        mode = nextMode
     }
 
     func close() {
@@ -808,9 +820,29 @@ final class UniversalAIEditPanel: NSPanel {
         standardWindowButton(.closeButton)?.isHidden = true
     }
 
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown,
+           event.keyCode == 53 {
+            manager?.handleEscapeKey()
+            return
+        }
+
+        if event.type == .keyDown,
+           event.keyCode == 48,
+           event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
+            manager?.handleTabKey()
+            return
+        }
+
+        super.sendEvent(event)
+    }
+
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
             manager?.handleEscapeKey()
+        } else if event.keyCode == 48,
+                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
+            manager?.handleTabKey()
         } else {
             super.keyDown(with: event)
         }
