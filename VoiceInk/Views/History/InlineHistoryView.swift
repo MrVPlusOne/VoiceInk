@@ -10,6 +10,8 @@ struct InlineHistoryView: View {
     @State private var isPanelPresented = false
     @State private var panelMode: InlineHistoryPanelMode = .info
     @State private var panelEntryId: String?
+    @State private var aiEditDetailEntryId: String?
+    @State private var screenContextEntryId: String?
     @State private var displayedEntries: [HistoryEntry] = []
     @State private var isLoading = false
     @State private var hasMoreContent = true
@@ -52,6 +54,16 @@ struct InlineHistoryView: View {
         return displayedEntries.first { $0.id == id }
     }
 
+    private var aiEditDetailRecord: AIEditHistoryRecord? {
+        guard let id = aiEditDetailEntryId else { return nil }
+        return displayedEntries.first { $0.id == id }?.aiEditRecord
+    }
+
+    private var screenContextRecord: AIEditHistoryRecord? {
+        guard let id = screenContextEntryId else { return nil }
+        return displayedEntries.first { $0.id == id }?.aiEditRecord
+    }
+
     private func openPanel(mode: InlineHistoryPanelMode, entryID: String? = nil) {
         panelMode = mode
         panelEntryId = entryID
@@ -62,6 +74,14 @@ struct InlineHistoryView: View {
     private func closePanel() {
         isPanelPresented = false
         panelMode = .info
+    }
+
+    private func openAIEditDetail(entryID: String) {
+        aiEditDetailEntryId = entryID
+    }
+
+    private func openScreenContext(entryID: String) {
+        screenContextEntryId = entryID
     }
 
     var body: some View {
@@ -90,6 +110,29 @@ struct InlineHistoryView: View {
             }
         )) {
             panelContent
+        }
+        .sheet(isPresented: Binding(
+            get: { aiEditDetailEntryId != nil },
+            set: { newValue in
+                if !newValue { aiEditDetailEntryId = nil }
+            }
+        )) {
+            if let record = aiEditDetailRecord {
+                aiEditDetailSheet(record)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { screenContextEntryId != nil },
+            set: { newValue in
+                if !newValue { screenContextEntryId = nil }
+            }
+        )) {
+            if let screenContext = screenContextRecord?.sentScreenContext {
+                AIEditScreenContextInspectorView(
+                    contextText: screenContext,
+                    subtitle: "Sent with this AI Edit request"
+                )
+            }
         }
         .alert("Delete Selected Items?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) {
@@ -272,6 +315,12 @@ struct InlineHistoryView: View {
                         },
                         onShowInfo: {
                             openPanel(mode: .info, entryID: entry.id)
+                        },
+                        onShowDebug: entry.aiEditRecord == nil ? nil : {
+                            openAIEditDetail(entryID: entry.id)
+                        },
+                        onShowScreenContext: entry.aiEditRecord?.sentScreenContext == nil ? nil : {
+                            openScreenContext(entryID: entry.id)
                         }
                     )
                 }
@@ -302,6 +351,16 @@ struct InlineHistoryView: View {
     }
 
     // MARK: - Side Panel
+
+    private func aiEditDetailSheet(_ record: AIEditHistoryRecord) -> some View {
+        VStack(spacing: 0) {
+            AppPanelHeader(title: "AI Edit Details", onClose: { aiEditDetailEntryId = nil })
+
+            AIEditHistoryDetailView(record: record)
+        }
+        .frame(minWidth: 760, idealWidth: 940, minHeight: 620, idealHeight: 760)
+        .background(SidePanelBackground())
+    }
 
     @ViewBuilder
     private var panelContent: some View {
@@ -487,6 +546,8 @@ private struct HistoryCardRow: View {
     let onToggleExpand: () -> Void
     let onToggleCheck: (() -> Void)?
     let onShowInfo: () -> Void
+    let onShowDebug: (() -> Void)?
+    let onShowScreenContext: (() -> Void)?
 
     @State private var selectedTab: TranscriptionTab = .original
 
@@ -661,7 +722,35 @@ private struct HistoryCardRow: View {
             .frame(maxHeight: 350)
             .hoverCopyButton(textToCopy: record.generatedText)
 
+            if onShowDebug != nil || onShowScreenContext != nil {
+                aiEditDebugButtonRow
+            }
+
             infoButtonRow
+        }
+    }
+
+    private var aiEditDebugButtonRow: some View {
+        HStack(spacing: 8) {
+            if let onShowDebug {
+                Button(action: onShowDebug) {
+                    Label("Prompt / payload", systemImage: "curlybraces")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+                .help("View AI Edit prompt and payload")
+            }
+
+            if let onShowScreenContext {
+                Button(action: onShowScreenContext) {
+                    Label("Screen context", systemImage: "rectangle.on.rectangle")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+                .help("View sent screen context")
+            }
+
+            Spacer()
         }
     }
 
