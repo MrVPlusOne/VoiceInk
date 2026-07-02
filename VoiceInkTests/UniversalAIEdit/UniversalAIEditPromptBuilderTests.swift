@@ -137,6 +137,23 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: true, isResultFresh: true) == .apply)
     }
 
+    @Test func primaryActionReturnsToGenerateForStaleOldResultAfterFailedRegenerate() {
+        #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: true, isResultFresh: false) == .generate)
+    }
+
+    @Test func voiceToggleOnlyAllowsListeningStopWhileBusy() {
+        #expect(UniversalAIEditFlow.canToggleVoiceInstruction(phase: .ready, isVoiceRecording: false))
+        #expect(UniversalAIEditFlow.canToggleVoiceInstruction(phase: .failed("Try again"), isVoiceRecording: false))
+        #expect(UniversalAIEditFlow.canToggleVoiceInstruction(phase: .preview, isVoiceRecording: false))
+        #expect(UniversalAIEditFlow.canToggleVoiceInstruction(phase: .listening, isVoiceRecording: true))
+
+        #expect(!UniversalAIEditFlow.canToggleVoiceInstruction(phase: .capturing, isVoiceRecording: false))
+        #expect(!UniversalAIEditFlow.canToggleVoiceInstruction(phase: .transcribingInstruction, isVoiceRecording: false))
+        #expect(!UniversalAIEditFlow.canToggleVoiceInstruction(phase: .generating, isVoiceRecording: false))
+        #expect(!UniversalAIEditFlow.canToggleVoiceInstruction(phase: .applying, isVoiceRecording: false))
+        #expect(!UniversalAIEditFlow.canToggleVoiceInstruction(phase: .transcribingInstruction, isVoiceRecording: true))
+    }
+
     @Test func generatedInputSnapshotChangesWhenInstructionModeOrContextChanges() {
         let context = UniversalAIEditContext(
             capturedAt: Date(timeIntervalSince1970: 0),

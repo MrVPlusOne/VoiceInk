@@ -314,7 +314,7 @@ struct UniversalAIEditPanelView: View {
                     )
                     .font(.system(size: 12, weight: .medium))
                 }
-                .disabled(manager.phase == .generating || manager.phase == .applying)
+                .disabled(!manager.canToggleVoiceInstruction)
 
                 if manager.canRedoVoiceInstruction {
                     Button {

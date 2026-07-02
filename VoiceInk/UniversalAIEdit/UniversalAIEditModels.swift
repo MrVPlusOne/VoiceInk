@@ -66,6 +66,17 @@ enum UniversalAIEditFlow {
     ) -> UniversalAIEditPrimaryAction {
         hasGeneratedText && isResultFresh ? .apply : .generate
     }
+
+    static func canToggleVoiceInstruction(
+        phase: UniversalAIEditPhase,
+        isVoiceRecording: Bool
+    ) -> Bool {
+        if isVoiceRecording {
+            return phase == .listening
+        }
+
+        return !phase.isBusy
+    }
 }
 
 struct UniversalAIEditInputSnapshot: Equatable {

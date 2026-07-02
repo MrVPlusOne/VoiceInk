@@ -66,6 +66,13 @@ final class UniversalAIEditManager: ObservableObject {
             generatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var canToggleVoiceInstruction: Bool {
+        UniversalAIEditFlow.canToggleVoiceInstruction(
+            phase: phase,
+            isVoiceRecording: isVoiceRecording
+        )
+    }
+
     var primaryAction: UniversalAIEditPrimaryAction {
         UniversalAIEditFlow.primaryAction(
             hasGeneratedText: hasGeneratedText,
@@ -195,6 +202,7 @@ final class UniversalAIEditManager: ObservableObject {
                 return
             }
             discardPendingHistoryRecordIfNeeded(note: String(localized: "Regenerated"))
+            generatedInputSnapshot = nil
             phase = .generating
             statusText = String(localized: "Generating...")
             do {
@@ -337,6 +345,8 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     func toggleVoiceInstruction() {
+        guard canToggleVoiceInstruction else { return }
+
         Task { @MainActor in
             if isVoiceRecording {
                 await stopVoiceInstruction()
@@ -438,6 +448,7 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     private func startVoiceInstruction() async {
+        guard !phase.isBusy else { return }
         guard let engine else { return }
         guard ModeRuntimeResolver.transcriptionConfiguration(
             transcriptionModelManager: engine.transcriptionModelManager
