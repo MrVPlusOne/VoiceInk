@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 struct UniversalAIEditPanelView: View {
-    static let preferredContentSize = NSSize(width: 720, height: 680)
-    static let previewBoxHeight: CGFloat = 260
+    static let preferredContentSize = NSSize(width: 640, height: 540)
+    static let previewBoxHeight: CGFloat = 220
 
     @ObservedObject var manager: UniversalAIEditManager
     @FocusState private var instructionFocused: Bool
@@ -78,13 +78,14 @@ struct UniversalAIEditPanelView: View {
 
             Spacer(minLength: 12)
 
-            Picker("", selection: $manager.mode) {
+            Picker("", selection: modeSelection) {
                 Text("Edit selection").tag(UniversalAIEditMode.replaceSelection)
+                    .disabled(!manager.canSelectMode(.replaceSelection))
                 Text("Generate").tag(UniversalAIEditMode.insertNew)
             }
             .pickerStyle(.segmented)
             .frame(width: 214)
-            .disabled(!manager.canToggleMode)
+            .disabled(!manager.canInteractWithModePicker)
 
             Button {
                 manager.close()
@@ -259,6 +260,13 @@ struct UniversalAIEditPanelView: View {
                 }
             }
         }
+    }
+
+    private var modeSelection: Binding<UniversalAIEditMode> {
+        Binding(
+            get: { manager.mode },
+            set: { manager.setMode($0) }
+        )
     }
 
     @ViewBuilder

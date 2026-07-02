@@ -292,20 +292,57 @@ struct UniversalAIEditPromptBuilderTests {
     }
 
     @Test func tabModeToggleRespectsBusyPhases() {
-        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .ready) == .replaceSelection)
-        #expect(UniversalAIEditFlow.toggledMode(from: .replaceSelection, phase: .preview) == .insertNew)
-        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .failed("Try again")) == .replaceSelection)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .ready, hasSelection: true) == .replaceSelection)
+        #expect(UniversalAIEditFlow.toggledMode(from: .replaceSelection, phase: .preview, hasSelection: true) == .insertNew)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .failed("Try again"), hasSelection: true) == .replaceSelection)
 
-        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .capturing) == nil)
-        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .listening) == nil)
-        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .transcribingInstruction) == nil)
-        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .generating) == nil)
-        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .applying) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .capturing, hasSelection: true) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .listening, hasSelection: true) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .transcribingInstruction, hasSelection: true) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .generating, hasSelection: true) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .applying, hasSelection: true) == nil)
     }
 
-    @Test func previewBoxHeightLeavesComposerBreathingRoom() {
-        #expect(UniversalAIEditPanelView.previewBoxHeight < UniversalAIEditPanelView.preferredContentSize.height * 0.4)
-        #expect(UniversalAIEditPanelView.previewBoxHeight >= 240)
+    @Test func emptySelectionCannotEnterEditSelectionMode() {
+        #expect(!UniversalAIEditFlow.hasEditableSelection(nil))
+        #expect(!UniversalAIEditFlow.hasEditableSelection(""))
+        #expect(!UniversalAIEditFlow.hasEditableSelection("   \n"))
+        #expect(UniversalAIEditFlow.hasEditableSelection("Selected text"))
+
+        let whitespaceSelectionContext = UniversalAIEditContext(
+            capturedAt: Date(timeIntervalSince1970: 0),
+            target: UniversalAIEditTargetSnapshot(
+                appName: "Notes",
+                bundleIdentifier: "com.apple.Notes",
+                processIdentifier: 101,
+                focusedWindowTitle: "Ideas",
+                focusedWindowFrame: nil
+            ),
+            selectedText: "   \n",
+            clipboardText: nil,
+            screenText: nil,
+            diagnostics: []
+        )
+        #expect(whitespaceSelectionContext.mode == .insertNew)
+
+        #expect(!UniversalAIEditFlow.canSelectMode(.replaceSelection, phase: .ready, hasSelection: false))
+        #expect(UniversalAIEditFlow.canSelectMode(.insertNew, phase: .ready, hasSelection: false))
+        #expect(UniversalAIEditFlow.canSelectMode(.replaceSelection, phase: .ready, hasSelection: true))
+
+        #expect(UniversalAIEditFlow.toggledMode(from: .insertNew, phase: .ready, hasSelection: false) == nil)
+        #expect(UniversalAIEditFlow.toggledMode(from: .replaceSelection, phase: .ready, hasSelection: false) == .insertNew)
+    }
+
+    @Test func aiEditPanelUsesCompactFootprintWithScrollablePreview() {
+        #expect(UniversalAIEditPanelView.preferredContentSize.width <= 640)
+        #expect(UniversalAIEditPanelView.preferredContentSize.height <= 560)
+        #expect(UniversalAIEditPanelView.previewBoxHeight <= 0.45 * UniversalAIEditPanelView.preferredContentSize.height)
+        #expect(UniversalAIEditPanelView.previewBoxHeight >= 200)
+    }
+
+    @Test func aiEditOpenStartsVoiceUnlessPanelIsAlreadyVisible() {
+        #expect(UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: false))
+        #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: true))
     }
 
     @Test func generatedInputSnapshotChangesWhenInstructionModeOrContextChanges() {

@@ -88,6 +88,11 @@ enum UniversalAIEditEscapeAction: Equatable {
 }
 
 enum UniversalAIEditFlow {
+    static func hasEditableSelection(_ selectedText: String?) -> Bool {
+        guard let selectedText else { return false }
+        return !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     static func canApply(
         hasGeneratedText: Bool,
         phase: UniversalAIEditPhase,
@@ -138,12 +143,38 @@ enum UniversalAIEditFlow {
         !phase.isBusy
     }
 
+    static func canSelectMode(
+        _ mode: UniversalAIEditMode,
+        phase: UniversalAIEditPhase,
+        hasSelection: Bool
+    ) -> Bool {
+        guard !phase.isBusy else { return false }
+
+        switch mode {
+        case .replaceSelection:
+            return hasSelection
+        case .insertNew:
+            return true
+        }
+    }
+
     static func toggledMode(
         from mode: UniversalAIEditMode,
-        phase: UniversalAIEditPhase
+        phase: UniversalAIEditPhase,
+        hasSelection: Bool
     ) -> UniversalAIEditMode? {
         guard canToggleMode(phase: phase) else { return nil }
-        return mode.toggled
+
+        let nextMode = mode.toggled
+        if canSelectMode(nextMode, phase: phase, hasSelection: hasSelection) {
+            return nextMode
+        }
+
+        return mode == .replaceSelection ? .insertNew : nil
+    }
+
+    static func shouldStartVoiceInstructionOnOpen(panelIsVisible: Bool) -> Bool {
+        !panelIsVisible
     }
 
     static func escapeAction(
@@ -191,7 +222,7 @@ struct UniversalAIEditContext: Equatable {
     let diagnostics: [UniversalAIEditCaptureDiagnostic]
 
     var mode: UniversalAIEditMode {
-        if let selectedText, !selectedText.isEmpty {
+        if UniversalAIEditFlow.hasEditableSelection(selectedText) {
             return .replaceSelection
         }
         return .insertNew

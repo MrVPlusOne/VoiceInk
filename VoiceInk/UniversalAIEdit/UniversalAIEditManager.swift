@@ -76,7 +76,15 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     var canToggleMode: Bool {
+        UniversalAIEditFlow.canToggleMode(phase: phase) && hasEditableSelection
+    }
+
+    var canInteractWithModePicker: Bool {
         UniversalAIEditFlow.canToggleMode(phase: phase)
+    }
+
+    var hasEditableSelection: Bool {
+        UniversalAIEditFlow.hasEditableSelection(context?.selectedText)
     }
 
     var primaryAction: UniversalAIEditPrimaryAction {
@@ -150,7 +158,10 @@ final class UniversalAIEditManager: ObservableObject {
 
         self.engine = engine
         Task { @MainActor in
-            await openPanel(engine: engine)
+            await openPanel(
+                engine: engine,
+                startVoiceRecording: UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: false)
+            )
         }
     }
 
@@ -165,7 +176,10 @@ final class UniversalAIEditManager: ObservableObject {
 
         self.engine = engine
         Task { @MainActor in
-            await openPanel(engine: engine, startVoiceRecording: true)
+            await openPanel(
+                engine: engine,
+                startVoiceRecording: UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: false)
+            )
         }
     }
 
@@ -195,11 +209,28 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     func handleTabKey() {
-        guard let nextMode = UniversalAIEditFlow.toggledMode(from: mode, phase: phase) else {
+        guard let nextMode = UniversalAIEditFlow.toggledMode(
+            from: mode,
+            phase: phase,
+            hasSelection: hasEditableSelection
+        ) else {
             return
         }
 
         mode = nextMode
+    }
+
+    func canSelectMode(_ requestedMode: UniversalAIEditMode) -> Bool {
+        UniversalAIEditFlow.canSelectMode(
+            requestedMode,
+            phase: phase,
+            hasSelection: hasEditableSelection
+        )
+    }
+
+    func setMode(_ requestedMode: UniversalAIEditMode) {
+        guard canSelectMode(requestedMode) else { return }
+        mode = requestedMode
     }
 
     func close() {
