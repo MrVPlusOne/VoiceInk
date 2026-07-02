@@ -492,7 +492,7 @@ final class UniversalAIEditManager: ObservableObject {
         do {
             try await instructionRecorder.startRecording(
                 toOutputFile: url,
-                audioBehavior: .preserveSystemOutput
+                audioBehavior: .muteSystemOutputOnly
             )
             instructionAudioURL = url
             isVoiceRecording = true

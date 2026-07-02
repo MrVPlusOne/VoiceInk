@@ -31,7 +31,7 @@ struct AudioSetupView: View {
             }
 
             Section {
-                Toggle("Mute Audio While Recording", isOn: $mediaController.isSystemMuteEnabled)
+                Toggle("Mute system audio when recording", isOn: $mediaController.isSystemMuteEnabled)
 
                 Toggle("Pause Media While Recording", isOn: $playbackController.isPauseMediaEnabled)
 

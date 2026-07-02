@@ -48,8 +48,6 @@ final class MediaController: ObservableObject {
     }
 
     func unmuteSystemAudio() async {
-        guard isSystemMuteEnabled else { return }
-
         let delay = audioResumptionDelay
         let shouldUnmute = didMuteAudio && !wasAudioMutedBeforeRecording
         let myGeneration = muteGeneration

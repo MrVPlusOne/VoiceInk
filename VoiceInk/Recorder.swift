@@ -21,7 +21,7 @@ class Recorder: NSObject, ObservableObject {
     private var audioMuteTask: Task<Void, Never>?
     private var mediaPauseTask: Task<Void, Never>?
     private var audioRestorationTask: Task<Void, Never>?
-    private var currentAudioBehavior: RecorderAudioBehavior = .interruptSystemOutput
+    private var currentAudioBehavior: RecorderAudioBehavior = .standardRecording
     private let smoothedValuesLock = NSLock()
     private var smoothedAverage: Float = 0
     private var smoothedPeak: Float = 0
@@ -116,7 +116,7 @@ class Recorder: NSObject, ObservableObject {
 
     func startRecording(
         toOutputFile url: URL,
-        audioBehavior: RecorderAudioBehavior = .interruptSystemOutput
+        audioBehavior: RecorderAudioBehavior = .standardRecording
     ) async throws {
         deviceManager.isRecordingActive = true
         currentAudioBehavior = audioBehavior
@@ -138,7 +138,7 @@ class Recorder: NSObject, ObservableObject {
         audioRestorationTask?.cancel()
         audioRestorationTask = nil
         audioMeterUpdateTimer?.cancel()
-        if audioBehavior.interruptsSystemOutput {
+        if audioBehavior.allowsSystemMute {
             muteSystemAudio()
         }
 
@@ -160,7 +160,7 @@ class Recorder: NSObject, ObservableObject {
             }
 
             startAudioMeterTimer()
-            if audioBehavior.interruptsSystemOutput {
+            if audioBehavior.allowsMediaPause {
                 pauseMedia()
             }
         } catch {
@@ -197,15 +197,21 @@ class Recorder: NSObject, ObservableObject {
         audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
 
         audioRestorationTask?.cancel()
-        if currentAudioBehavior.interruptsSystemOutput {
+        if currentAudioBehavior.allowsSystemMute || currentAudioBehavior.allowsMediaPause {
+            let shouldRestoreSystemMute = currentAudioBehavior.allowsSystemMute
+            let shouldResumeMedia = currentAudioBehavior.allowsMediaPause
             audioRestorationTask = Task {
-                await mediaController.unmuteSystemAudio()
-                await playbackController.resumeMedia()
+                if shouldRestoreSystemMute {
+                    await mediaController.unmuteSystemAudio()
+                }
+                if shouldResumeMedia {
+                    await playbackController.resumeMedia()
+                }
             }
         } else {
             audioRestorationTask = nil
         }
-        currentAudioBehavior = .interruptSystemOutput
+        currentAudioBehavior = .standardRecording
         deviceManager.isRecordingActive = false
     }
 
@@ -336,11 +342,21 @@ class Recorder: NSObject, ObservableObject {
 }
 
 enum RecorderAudioBehavior: Equatable {
-    case interruptSystemOutput
+    case standardRecording
+    case muteSystemOutputOnly
     case preserveSystemOutput
 
-    var interruptsSystemOutput: Bool {
-        self == .interruptSystemOutput
+    var allowsSystemMute: Bool {
+        switch self {
+        case .standardRecording, .muteSystemOutputOnly:
+            return true
+        case .preserveSystemOutput:
+            return false
+        }
+    }
+
+    var allowsMediaPause: Bool {
+        self == .standardRecording
     }
 }
 

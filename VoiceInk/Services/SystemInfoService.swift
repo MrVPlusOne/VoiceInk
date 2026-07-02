@@ -51,7 +51,7 @@ class SystemInfoService {
         RECORDING FEEDBACK:
         Sound Feedback: \(CustomSoundManager.shared.hasAnyRecordingSoundEnabled)
         Pause Media While Recording: \(UserDefaults.standard.bool(forKey: "isPauseMediaEnabled"))
-        Mute Audio While Recording: \(UserDefaults.standard.bool(forKey: "isSystemMuteEnabled"))
+        Mute System Audio When Recording: \(UserDefaults.standard.bool(forKey: "isSystemMuteEnabled"))
         Audio Resumption Delay: \(UserDefaults.standard.double(forKey: "audioResumptionDelay"))s
 
         CLIPBOARD & PASTE SETTINGS:

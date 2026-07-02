@@ -10375,18 +10375,18 @@
         }
       }
     },
-    "Mute Audio While Recording" : {
+    "Mute system audio when recording" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audio während Aufnahme stummschalten"
+            "value" : "Systemaudio während der Aufnahme stummschalten"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "录音时将音频静音"
+            "value" : "录音时将系统音频静音"
           }
         }
       }
