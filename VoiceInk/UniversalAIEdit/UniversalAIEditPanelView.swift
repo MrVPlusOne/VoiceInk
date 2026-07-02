@@ -9,6 +9,7 @@ struct UniversalAIEditPanelView: View {
     @State private var contextDetailsExpanded = false
     @State private var previewMode: UniversalAIEditPreviewMode = .diff
     @State private var isScreenContextInspectorPresented = false
+    @State private var recordingPulse = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +35,7 @@ struct UniversalAIEditPanelView: View {
         )
         .onAppear {
             instructionFocused = manager.shouldFocusInstructionOnAppear
+            recordingPulse = manager.isVoiceRecording
         }
         .onChange(of: instructionFocused) { _, isFocused in
             guard isFocused else { return }
@@ -41,6 +43,9 @@ struct UniversalAIEditPanelView: View {
         }
         .onChange(of: manager.instruction) { _, _ in
             manager.cancelVoiceInstructionForManualInput()
+        }
+        .onChange(of: manager.isVoiceRecording) { _, isRecording in
+            recordingPulse = isRecording
         }
         .sheet(isPresented: $isScreenContextInspectorPresented) {
             if let screenText = manager.context?.screenText, !screenText.isEmpty {
@@ -324,11 +329,7 @@ struct UniversalAIEditPanelView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(AppTheme.Text.secondary)
 
-            if manager.isVoiceRecording {
-                recordingStatusPill
-            } else {
-                composerStatusPill
-            }
+            composerStatusPill
 
             Spacer(minLength: 8)
         }
@@ -351,6 +352,13 @@ struct UniversalAIEditPanelView: View {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .stroke(instructionFocused ? AppTheme.Accent.border : AppTheme.Border.control.opacity(0.55), lineWidth: 1)
             )
+            .overlay(alignment: .leading) {
+                if manager.isVoiceRecording {
+                    recordingInlineStatus
+                        .padding(.horizontal, 10)
+                        .allowsHitTesting(false)
+                }
+            }
     }
 
     private var instructionEditorHeight: CGFloat {
@@ -364,8 +372,8 @@ struct UniversalAIEditPanelView: View {
     }
 
     @ViewBuilder
-    private var recordingStatusPill: some View {
-        HStack(spacing: 7) {
+    private var recordingInlineStatus: some View {
+        HStack(spacing: 8) {
             Circle()
                 .fill(AppTheme.Accent.primary)
                 .frame(width: 7, height: 7)
@@ -379,13 +387,11 @@ struct UniversalAIEditPanelView: View {
                 currentLevel: manager.voiceMeterLevel,
                 samples: manager.voiceMeterSamples
             )
+
+            Text("Esc cancels")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Text.muted)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(AppTheme.Accent.fill.opacity(0.72))
-        )
     }
 
     @ViewBuilder
@@ -605,21 +611,9 @@ struct UniversalAIEditPanelView: View {
     @ViewBuilder
     private var secondaryActionCluster: some View {
         HStack(spacing: 8) {
-            if manager.isVoiceRecording {
-                Button {
-                    manager.cancelVoiceInstructionAndReturnToEditing()
-                } label: {
-                    Label("Cancel", systemImage: "xmark")
-                }
-                .help("Cancel voice input")
-            } else {
-                Button {
-                    manager.toggleVoiceInstruction()
-                } label: {
-                    Label("Voice", systemImage: "mic.fill")
-                }
-                .disabled(!manager.canToggleVoiceInstruction)
+            voiceControlButton
 
+            if !manager.isVoiceRecording {
                 if manager.canRedoVoiceInstruction {
                     Button {
                         manager.redoVoiceInstruction()
@@ -652,18 +646,52 @@ struct UniversalAIEditPanelView: View {
         Button {
             manager.performComposerPrimaryAction()
         } label: {
-            if let systemImage = manager.composerPrimaryAction.systemImage {
-                Label(manager.composerPrimaryAction.title, systemImage: systemImage)
-                    .frame(maxWidth: .infinity)
-            } else {
-                Text(manager.composerPrimaryAction.title)
-                    .frame(maxWidth: .infinity)
-            }
+            Text(manager.composerPrimaryAction.title)
+                .frame(maxWidth: .infinity)
         }
         .keyboardShortcut(.return, modifiers: [])
         .disabled(!manager.canPerformComposerPrimaryAction)
         .frame(width: 108)
         .buttonStyle(.borderedProminent)
+    }
+
+    private var voiceControlButton: some View {
+        Button {
+            manager.toggleVoiceInstruction()
+        } label: {
+            ZStack {
+                if manager.isVoiceRecording {
+                    Circle()
+                        .stroke(AppTheme.Accent.primary.opacity(0.32), lineWidth: 2)
+                        .scaleEffect(recordingPulse ? 1.18 : 0.96)
+                        .opacity(recordingPulse ? 0.56 : 0.18)
+                        .animation(
+                            .easeInOut(duration: 0.95).repeatForever(autoreverses: true),
+                            value: recordingPulse
+                        )
+                }
+
+                Circle()
+                    .fill(manager.isVoiceRecording ? AppTheme.Accent.fill : AppTheme.Surface.controlActive.opacity(0.55))
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                manager.isVoiceRecording ? AppTheme.Accent.primary.opacity(0.42) : AppTheme.Border.control.opacity(0.5),
+                                lineWidth: 1
+                            )
+                    )
+
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(manager.isVoiceRecording ? AppTheme.Accent.primary : AppTheme.Text.secondary)
+            }
+            .frame(width: 32, height: 32)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!manager.canToggleVoiceInstruction)
+        .help(manager.isVoiceRecording ? "Stop recording" : "Record instruction")
+        .accessibilityLabel(manager.isVoiceRecording ? "Stop recording" : "Record instruction")
     }
 }
 

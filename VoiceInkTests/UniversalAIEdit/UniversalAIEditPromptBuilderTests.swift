@@ -148,13 +148,13 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(UniversalAIEditFlow.primaryAction(hasGeneratedText: true, isResultFresh: false) == .generate)
     }
 
-    @Test func composerPrimaryActionUsesStopOnlyWhileListening() {
+    @Test func composerPrimaryActionKeepsGenerateApplyModelWhileListening() {
         #expect(UniversalAIEditFlow.composerPrimaryAction(
             phase: .listening,
             isVoiceRecording: true,
             hasGeneratedText: false,
             isResultFresh: false
-        ) == .stopRecording)
+        ) == .generate)
         #expect(UniversalAIEditFlow.composerPrimaryAction(
             phase: .ready,
             isVoiceRecording: false,
@@ -173,6 +173,21 @@ struct UniversalAIEditPromptBuilderTests {
             hasGeneratedText: true,
             isResultFresh: false
         ) == .generate)
+    }
+
+    @Test func escapeCancelsOnlyActiveVoiceRecording() {
+        #expect(UniversalAIEditFlow.escapeAction(
+            phase: .listening,
+            isVoiceRecording: true
+        ) == .cancelVoiceRecording)
+        #expect(UniversalAIEditFlow.escapeAction(
+            phase: .ready,
+            isVoiceRecording: false
+        ) == .closePanel)
+        #expect(UniversalAIEditFlow.escapeAction(
+            phase: .transcribingInstruction,
+            isVoiceRecording: false
+        ) == .closePanel)
     }
 
     @Test func voiceToggleOnlyAllowsListeningStopWhileBusy() {

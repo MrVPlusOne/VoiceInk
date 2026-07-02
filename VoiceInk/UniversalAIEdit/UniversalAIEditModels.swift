@@ -60,29 +60,22 @@ enum UniversalAIEditPrimaryAction: Equatable {
 }
 
 enum UniversalAIEditComposerPrimaryAction: Equatable {
-    case stopRecording
     case generate
     case apply
 
     var title: String {
         switch self {
-        case .stopRecording:
-            return String(localized: "Stop")
         case .generate:
             return String(localized: "Generate")
         case .apply:
             return String(localized: "Apply")
         }
     }
+}
 
-    var systemImage: String? {
-        switch self {
-        case .stopRecording:
-            return "stop.fill"
-        case .generate, .apply:
-            return nil
-        }
-    }
+enum UniversalAIEditEscapeAction: Equatable {
+    case cancelVoiceRecording
+    case closePanel
 }
 
 enum UniversalAIEditFlow {
@@ -109,8 +102,8 @@ enum UniversalAIEditFlow {
         hasGeneratedText: Bool,
         isResultFresh: Bool
     ) -> UniversalAIEditComposerPrimaryAction {
-        if isVoiceRecording, phase == .listening {
-            return .stopRecording
+        if isVoiceRecording {
+            return .generate
         }
 
         switch primaryAction(hasGeneratedText: hasGeneratedText, isResultFresh: isResultFresh) {
@@ -130,6 +123,13 @@ enum UniversalAIEditFlow {
         }
 
         return !phase.isBusy
+    }
+
+    static func escapeAction(
+        phase: UniversalAIEditPhase,
+        isVoiceRecording: Bool
+    ) -> UniversalAIEditEscapeAction {
+        isVoiceRecording && phase == .listening ? .cancelVoiceRecording : .closePanel
     }
 }
 

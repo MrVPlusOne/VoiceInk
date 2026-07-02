@@ -102,8 +102,6 @@ final class UniversalAIEditManager: ObservableObject {
 
     var canPerformComposerPrimaryAction: Bool {
         switch composerPrimaryAction {
-        case .stopRecording:
-            return isVoiceRecording && canToggleVoiceInstruction
         case .generate:
             return canGenerate
         case .apply:
@@ -178,10 +176,17 @@ final class UniversalAIEditManager: ObservableObject {
 
     func performComposerPrimaryAction() {
         switch composerPrimaryAction {
-        case .stopRecording:
-            toggleVoiceInstruction()
         case .generate, .apply:
             performPrimaryAction()
+        }
+    }
+
+    func handleEscapeKey() {
+        switch UniversalAIEditFlow.escapeAction(phase: phase, isVoiceRecording: isVoiceRecording) {
+        case .cancelVoiceRecording:
+            cancelVoiceInstructionAndReturnToEditing()
+        case .closePanel:
+            close()
         }
     }
 
@@ -805,7 +810,7 @@ final class UniversalAIEditPanel: NSPanel {
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
-            manager?.close()
+            manager?.handleEscapeKey()
         } else {
             super.keyDown(with: event)
         }
