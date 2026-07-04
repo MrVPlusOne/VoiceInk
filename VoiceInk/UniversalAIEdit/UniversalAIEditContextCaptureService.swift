@@ -82,7 +82,12 @@ final class UniversalAIEditContextCaptureService {
             return nil
         }
 
-        return UniversalAIEditFocusedInputSnapshot(text: text, role: role)
+        return UniversalAIEditFocusedInputSnapshot(
+            text: text,
+            role: role,
+            identifier: normalized(copyStringAttribute(kAXIdentifierAttribute, from: focusedElement)),
+            frame: elementFrame(focusedElement)
+        )
     }
 
     private func targetSnapshot() -> UniversalAIEditTargetSnapshot {
@@ -167,5 +172,14 @@ final class UniversalAIEditContextCaptureService {
             return nil
         }
         return size
+    }
+
+    private func elementFrame(_ element: AXUIElement) -> CGRect? {
+        guard let position = copyCGPointAttribute(kAXPositionAttribute, from: element),
+              let size = copyCGSizeAttribute(kAXSizeAttribute, from: element) else {
+            return nil
+        }
+
+        return CGRect(origin: position, size: size)
     }
 }

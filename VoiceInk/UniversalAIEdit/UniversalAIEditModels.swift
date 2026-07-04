@@ -96,6 +96,20 @@ enum UniversalAIEditEditTargetSource: Equatable {
 struct UniversalAIEditFocusedInputSnapshot: Equatable {
     let text: String
     let role: String?
+    let identifier: String?
+    let frame: CGRect?
+
+    init(
+        text: String,
+        role: String?,
+        identifier: String? = nil,
+        frame: CGRect? = nil
+    ) {
+        self.text = text
+        self.role = role
+        self.identifier = identifier
+        self.frame = frame
+    }
 }
 
 enum UniversalAIEditShortcutHintAction: Equatable {
@@ -134,6 +148,49 @@ enum UniversalAIEditFlow {
     static func isSupportedFocusedInputRole(_ role: String?) -> Bool {
         guard let role else { return false }
         return supportedFocusedInputRoles.contains(role)
+    }
+
+    static func shouldReplaceFocusedInputOnApply(
+        generatedInputSnapshot: UniversalAIEditInputSnapshot?,
+        currentInputSnapshot: UniversalAIEditInputSnapshot?
+    ) -> Bool {
+        guard let generatedInputSnapshot,
+              let currentInputSnapshot,
+              generatedInputSnapshot == currentInputSnapshot else {
+            return false
+        }
+
+        return generatedInputSnapshot.mode == .replaceSelection &&
+            generatedInputSnapshot.context.editTargetSource == .focusedInput
+    }
+
+    static func focusedInputIdentityMatches(
+        captured: UniversalAIEditFocusedInputSnapshot,
+        current: UniversalAIEditFocusedInputSnapshot,
+        frameTolerance: CGFloat = 8
+    ) -> Bool {
+        guard captured.text == current.text,
+              captured.role == current.role else {
+            return false
+        }
+
+        if let capturedIdentifier = normalizedIdentifier(captured.identifier) {
+            guard normalizedIdentifier(current.identifier) == capturedIdentifier else {
+                return false
+            }
+        }
+
+        if let capturedFrame = captured.frame {
+            guard let currentFrame = current.frame else {
+                return false
+            }
+
+            guard frameDistance(capturedFrame, currentFrame) <= frameTolerance else {
+                return false
+            }
+        }
+
+        return true
     }
 
     static func canApply(
@@ -283,6 +340,19 @@ enum UniversalAIEditFlow {
         kAXTextAreaRole as String,
         kAXComboBoxRole as String
     ]
+
+    private static func normalizedIdentifier(_ identifier: String?) -> String? {
+        guard let identifier else { return nil }
+        let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func frameDistance(_ first: CGRect, _ second: CGRect) -> CGFloat {
+        abs(first.origin.x - second.origin.x) +
+            abs(first.origin.y - second.origin.y) +
+            abs(first.size.width - second.size.width) +
+            abs(first.size.height - second.size.height)
+    }
 }
 
 struct UniversalAIEditInputSnapshot: Equatable {

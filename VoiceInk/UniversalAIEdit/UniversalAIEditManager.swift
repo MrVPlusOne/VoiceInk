@@ -366,6 +366,10 @@ final class UniversalAIEditManager: ObservableObject {
         phase = .applying
         statusText = String(localized: "Applying...")
         let text = generatedText
+        let shouldReplaceFocusedInput = UniversalAIEditFlow.shouldReplaceFocusedInputOnApply(
+            generatedInputSnapshot: generatedInputSnapshot,
+            currentInputSnapshot: currentInputSnapshot
+        )
 
         Task { @MainActor in
             guard let targetApp else {
@@ -408,7 +412,7 @@ final class UniversalAIEditManager: ObservableObject {
                 return
             }
 
-            if context?.editTargetSource == .focusedInput {
+            if shouldReplaceFocusedInput {
                 guard let context,
                       replaceFocusedInputValue(text, context: context, targetApp: targetApp) else {
                     _ = ClipboardManager.copyToClipboard(text)
@@ -825,8 +829,20 @@ final class UniversalAIEditManager: ObservableObject {
             return false
         }
 
-        let currentText = copyStringAttribute(kAXValueAttribute, from: focusedElement)
-        guard currentText == capturedText else {
+        guard let currentText = copyStringAttribute(kAXValueAttribute, from: focusedElement) else {
+            return false
+        }
+
+        let currentFocusedInput = UniversalAIEditFocusedInputSnapshot(
+            text: currentText,
+            role: role,
+            identifier: normalized(copyStringAttribute(kAXIdentifierAttribute, from: focusedElement)),
+            frame: elementFrame(focusedElement)
+        )
+        guard UniversalAIEditFlow.focusedInputIdentityMatches(
+            captured: focusedInput,
+            current: currentFocusedInput
+        ) else {
             return false
         }
 
@@ -864,6 +880,12 @@ final class UniversalAIEditManager: ObservableObject {
         return value as? String
     }
 
+    private func normalized(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private func copyCGPointAttribute(_ attribute: String, from element: AXUIElement) -> CGPoint? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
@@ -892,6 +914,15 @@ final class UniversalAIEditManager: ObservableObject {
             return nil
         }
         return size
+    }
+
+    private func elementFrame(_ element: AXUIElement) -> CGRect? {
+        guard let position = copyCGPointAttribute(kAXPositionAttribute, from: element),
+              let size = copyCGSizeAttribute(kAXSizeAttribute, from: element) else {
+            return nil
+        }
+
+        return CGRect(origin: position, size: size)
     }
 
     private static func openAccessibilitySettings() {

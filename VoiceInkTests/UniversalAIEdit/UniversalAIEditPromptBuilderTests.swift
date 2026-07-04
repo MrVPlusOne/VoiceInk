@@ -415,6 +415,99 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(context.editTargetSource == .focusedInput)
     }
 
+    @Test func focusedInputReplacementRequiresFreshFocusedInputEditSnapshot() {
+        let context = UniversalAIEditContext(
+            capturedAt: Date(timeIntervalSince1970: 0),
+            target: UniversalAIEditTargetSnapshot(
+                appName: "Notes",
+                bundleIdentifier: "com.apple.Notes",
+                processIdentifier: 101,
+                focusedWindowTitle: "Ideas",
+                focusedWindowFrame: nil
+            ),
+            selectedText: "Full input text",
+            editTargetSource: .focusedInput,
+            focusedInput: UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextAreaRole as String,
+                identifier: "body",
+                frame: CGRect(x: 20, y: 30, width: 400, height: 120)
+            ),
+            clipboardText: nil,
+            screenText: nil,
+            diagnostics: []
+        )
+        let editSnapshot = UniversalAIEditInputSnapshot(
+            instruction: "Make this clearer",
+            mode: .replaceSelection,
+            context: context
+        )
+        let generateSnapshot = UniversalAIEditInputSnapshot(
+            instruction: "Make this clearer",
+            mode: .insertNew,
+            context: context
+        )
+
+        #expect(UniversalAIEditFlow.shouldReplaceFocusedInputOnApply(
+            generatedInputSnapshot: editSnapshot,
+            currentInputSnapshot: editSnapshot
+        ))
+        #expect(!UniversalAIEditFlow.shouldReplaceFocusedInputOnApply(
+            generatedInputSnapshot: generateSnapshot,
+            currentInputSnapshot: generateSnapshot
+        ))
+        #expect(!UniversalAIEditFlow.shouldReplaceFocusedInputOnApply(
+            generatedInputSnapshot: editSnapshot,
+            currentInputSnapshot: generateSnapshot
+        ))
+    }
+
+    @Test func focusedInputIdentityRequiresSameCapturedEditableElementWhenAvailable() {
+        let captured = UniversalAIEditFocusedInputSnapshot(
+            text: "Full input text",
+            role: kAXTextFieldRole as String,
+            identifier: "title",
+            frame: CGRect(x: 20, y: 30, width: 240, height: 28)
+        )
+
+        #expect(UniversalAIEditFlow.focusedInputIdentityMatches(
+            captured: captured,
+            current: UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String,
+                identifier: "title",
+                frame: CGRect(x: 22, y: 31, width: 240, height: 28)
+            )
+        ))
+        #expect(!UniversalAIEditFlow.focusedInputIdentityMatches(
+            captured: captured,
+            current: UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String,
+                identifier: "other-title",
+                frame: CGRect(x: 22, y: 31, width: 240, height: 28)
+            )
+        ))
+        #expect(!UniversalAIEditFlow.focusedInputIdentityMatches(
+            captured: captured,
+            current: UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String,
+                identifier: "title",
+                frame: CGRect(x: 20, y: 80, width: 240, height: 28)
+            )
+        ))
+        #expect(!UniversalAIEditFlow.focusedInputIdentityMatches(
+            captured: captured,
+            current: UniversalAIEditFocusedInputSnapshot(
+                text: "Different text",
+                role: kAXTextFieldRole as String,
+                identifier: "title",
+                frame: CGRect(x: 20, y: 30, width: 240, height: 28)
+            )
+        ))
+    }
+
     @Test func shortcutHintUsesOnlyConfiguredShortcutAndCurrentAction() {
         #expect(UniversalAIEditFlow.shortcutHintText(
             shortcutDisplay: nil,
