@@ -627,9 +627,19 @@ final class UniversalAIEditManager: ObservableObject {
                 throw UniversalAIEditError.transcriptionModelMissing
             }
 
+            let enhancementConfiguration = resolvedEnhancementConfiguration(engine: engine)
+            let recognitionSnapshot = RecordingContextSnapshot(
+                selectedText: context?.selectedText,
+                clipboardText: context?.clipboardText,
+                screenText: context?.screenText
+            )
             let requestContext = TranscriptionRequestContext(
                 language: transcriptionConfiguration.language,
-                prompt: String(localized: "Transcribe this as a concise editing instruction. Preserve requested tone, length, audience, and formatting changes.")
+                prompt: String(localized: "Transcribe this as a concise editing instruction. Preserve requested tone, length, audience, and formatting changes."),
+                recognitionContext: transcriptionConfiguration.requestContext(
+                    recordingContextSnapshot: recognitionSnapshot,
+                    sourceSettings: .enhancement(enhancementConfiguration)
+                ).recognitionContext
             )
             let text = try await engine.serviceRegistry.transcribe(
                 audioURL: audioURL,

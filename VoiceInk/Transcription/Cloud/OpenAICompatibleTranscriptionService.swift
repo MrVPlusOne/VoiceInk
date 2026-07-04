@@ -37,7 +37,7 @@ class OpenAICompatibleTranscriptionService {
         }
 
         let selectedLanguage = context.language ?? "auto"
-        let prompt = context.prompt ?? ""
+        let prompt = context.promptWithRecognitionContext ?? ""
         let crlf = "\r\n"
         var body = Data()
 

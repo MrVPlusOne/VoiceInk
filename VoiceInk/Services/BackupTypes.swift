@@ -32,6 +32,8 @@ struct CustomModelBackup: Codable {
     let modelName: String
     let isMultilingualModel: Bool
     let supportedLanguages: [String: String]
+    let supportsTranscriptionContext: Bool?
+    let isTranscriptionContextEnabled: Bool?
     let apiKey: String?
 
     init(model: CustomCloudModel) {
@@ -43,6 +45,8 @@ struct CustomModelBackup: Codable {
         self.modelName = model.modelName
         self.isMultilingualModel = model.isMultilingualModel
         self.supportedLanguages = model.supportedLanguages
+        self.supportsTranscriptionContext = model.supportsTranscriptionContext
+        self.isTranscriptionContextEnabled = TranscriptionContextModelSettings.isSendContextEnabled(for: model)
         self.apiKey = nil
     }
 
@@ -55,7 +59,8 @@ struct CustomModelBackup: Codable {
             apiEndpoint: apiEndpoint.trimmingCharacters(in: .whitespacesAndNewlines),
             modelName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
             isMultilingual: isMultilingualModel,
-            supportedLanguages: supportedLanguages
+            supportedLanguages: supportedLanguages,
+            supportsTranscriptionContext: supportsTranscriptionContext ?? false
         )
 
         if let apiKey, !apiKey.isEmpty {
@@ -63,6 +68,11 @@ struct CustomModelBackup: Codable {
         }
 
         return model
+    }
+
+    func applyTranscriptionContextSetting(to model: CustomCloudModel) {
+        guard let isTranscriptionContextEnabled else { return }
+        TranscriptionContextModelSettings.setSendContextEnabled(isTranscriptionContextEnabled, for: model)
     }
 }
 

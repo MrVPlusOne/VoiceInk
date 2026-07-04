@@ -14,9 +14,27 @@ struct TranscriptionRuntimeConfiguration {
     }
 
     var requestContext: TranscriptionRequestContext {
-        TranscriptionRequestContext(
+        requestContext(recordingContextSnapshot: nil)
+    }
+
+    func requestContext(
+        recordingContextSnapshot: RecordingContextSnapshot?,
+        sourceSettings: TranscriptionContextSourceSettings? = nil
+    ) -> TranscriptionRequestContext {
+        let recognitionContext: String?
+        if TranscriptionContextModelSettings.isSendContextEnabled(for: model) {
+            recognitionContext = TranscriptionRecognitionContextBuilder.build(
+                snapshot: recordingContextSnapshot,
+                sourceSettings: sourceSettings ?? .mode(mode)
+            )
+        } else {
+            recognitionContext = nil
+        }
+
+        return TranscriptionRequestContext(
             language: language,
-            prompt: UserDefaults.standard.string(forKey: "TranscriptionPrompt")
+            prompt: UserDefaults.standard.string(forKey: "TranscriptionPrompt"),
+            recognitionContext: recognitionContext
         )
     }
 }

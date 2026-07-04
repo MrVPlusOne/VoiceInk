@@ -75,11 +75,76 @@ private struct TranscriptionModelSettingsView: View {
         Form {
             FillerWordsSettingsSection()
 
+            TranscriptionContextSettingsSection()
+
             AdvancedModelSettingsSection()
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct TranscriptionContextSettingsSection: View {
+    @EnvironmentObject private var transcriptionModelManager: TranscriptionModelManager
+
+    private struct ContextModelOption: Identifiable {
+        let id: String
+        let model: any TranscriptionModel
+        let displayName: String
+        let providerName: String
+    }
+
+    private var supportedModels: [ContextModelOption] {
+        transcriptionModelManager.usableModels
+            .filter { TranscriptionContextModelSettings.supportsTranscriptionContext($0) }
+            .map { model in
+                ContextModelOption(
+                    id: TranscriptionContextModelSettings.storageID(for: model),
+                    model: model,
+                    displayName: model.displayName,
+                    providerName: model.provider.rawValue
+                )
+            }
+    }
+
+    var body: some View {
+        Section {
+            if supportedModels.isEmpty {
+                Text("No transcription models currently support additional text context.")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(supportedModels) { option in
+                    Toggle(isOn: binding(for: option.model)) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(option.displayName)
+                            Text(option.providerName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                }
+            }
+        } header: {
+            HStack(spacing: 4) {
+                Text("Transcription Context")
+                InfoTip("When enabled for a supported model, VoiceInk can send selected text, clipboard text, and screen text that are already allowed by the active mode as recognition hints for transcription.")
+            }
+        }
+    }
+
+    private func binding(for model: any TranscriptionModel) -> Binding<Bool> {
+        Binding(
+            get: {
+                TranscriptionContextModelSettings.isSendContextEnabled(for: model)
+            },
+            set: { isEnabled in
+                TranscriptionContextModelSettings.setSendContextEnabled(isEnabled, for: model)
+            }
+        )
     }
 }
 

@@ -183,6 +183,7 @@ struct CustomTranscriptionModelEditorPanel: View {
     @State private var apiKey = ""
     @State private var modelName = ""
     @State private var isMultilingual = true
+    @State private var supportsTranscriptionContext = false
     @State private var validationErrors: [String] = []
     @State private var isSaving = false
 
@@ -205,6 +206,11 @@ struct CustomTranscriptionModelEditorPanel: View {
                             }
                             CustomModelTextField(label: "Model Name", placeholder: "gpt-4o-mini-transcribe", text: $modelName)
                             CustomModelToggleRow(title: "Multilingual Model", isOn: $isMultilingual)
+                            CustomModelToggleRow(
+                                title: "Supports Context",
+                                isOn: $supportsTranscriptionContext,
+                                infoMessage: "Enable only if this transcription endpoint accepts text hints in the OpenAI-compatible prompt field."
+                            )
                         }
                     }
 
@@ -241,12 +247,14 @@ struct CustomTranscriptionModelEditorPanel: View {
             apiKey = ""
             modelName = editingModel.modelName
             isMultilingual = editingModel.isMultilingualModel
+            supportsTranscriptionContext = editingModel.supportsTranscriptionContext
         } else {
             displayName = ""
             apiEndpoint = "https://api.openai.com/v1/audio/transcriptions"
             apiKey = ""
             modelName = "gpt-4o-mini-transcribe"
             isMultilingual = true
+            supportsTranscriptionContext = TranscriptionContextModelSettings.isKnownOpenAITranscriptionContextModel(modelName)
         }
 
         validationErrors = []
@@ -283,7 +291,8 @@ struct CustomTranscriptionModelEditorPanel: View {
                 description: "Custom transcription model",
                 apiEndpoint: trimmedEndpoint,
                 modelName: trimmedModelName,
-                isMultilingual: isMultilingual
+                isMultilingual: isMultilingual,
+                supportsTranscriptionContext: supportsTranscriptionContext
             )
 
             customModelManager.updateCustomModel(updatedModel)
@@ -294,7 +303,8 @@ struct CustomTranscriptionModelEditorPanel: View {
                 description: "Custom transcription model",
                 apiEndpoint: trimmedEndpoint,
                 modelName: trimmedModelName,
-                isMultilingual: isMultilingual
+                isMultilingual: isMultilingual,
+                supportsTranscriptionContext: supportsTranscriptionContext
             )
 
             guard customModelManager.addCustomModel(customModel, apiKey: trimmedKey) else {
@@ -559,13 +569,19 @@ private struct CustomModelTextField: View {
 private struct CustomModelToggleRow: View {
     let title: LocalizedStringKey
     @Binding var isOn: Bool
+    var infoMessage: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: CustomModelEditorMetrics.labelWidth, alignment: .leading)
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                if let infoMessage {
+                    InfoTip(infoMessage)
+                }
+            }
+            .frame(width: CustomModelEditorMetrics.labelWidth, alignment: .leading)
 
             Toggle("", isOn: $isOn)
                 .labelsHidden()

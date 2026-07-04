@@ -290,7 +290,12 @@ enum BackupImporter {
         }
 
         let customModelManager = CustomCloudModelManager.shared
-        customModelManager.customModels = models.map { $0.makeModel() }
+        let importedModels = models.map { backup in
+            let model = backup.makeModel()
+            backup.applyTranscriptionContextSetting(to: model)
+            return model
+        }
+        customModelManager.customModels = importedModels
         customModelManager.saveCustomModels()
         transcriptionModelManager.refreshAllAvailableModels()
         print("Successfully imported \(models.count) custom model definitions.")

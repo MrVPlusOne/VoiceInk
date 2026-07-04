@@ -101,6 +101,10 @@ class TranscriptionPipeline {
 
         do {
             let transcriptionStart = Date()
+            let contextSnapshot = await recordingContextSnapshot()
+            let requestContext = transcriptionConfiguration.requestContext(
+                recordingContextSnapshot: contextSnapshot
+            )
             var text: String
             if let session {
                 text = try await session.transcribe(audioURL: audioURL)
@@ -108,7 +112,7 @@ class TranscriptionPipeline {
                 text = try await serviceRegistry.transcribe(
                     audioURL: audioURL,
                     model: model,
-                    context: transcriptionConfiguration.requestContext
+                    context: requestContext
                 )
             }
             text = TranscriptionOutputFilter.filter(text)
@@ -180,7 +184,6 @@ class TranscriptionPipeline {
                     }
 
                     do {
-                        let contextSnapshot = await recordingContextSnapshot()
                         let (enhancedText, enhancementDuration, promptName) = try await enhancementService.enhance(
                             textForAI,
                             configuration: resolvedEnhancementConfiguration,
