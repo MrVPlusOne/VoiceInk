@@ -3,7 +3,14 @@ import SwiftUI
 
 struct UniversalAIEditPanelView: View {
     static let preferredContentSize = NSSize(width: 640, height: 540)
+    static let composerOnlyContentSize = NSSize(width: 640, height: 320)
     static let previewBoxHeight: CGFloat = 220
+    static let composerActionClusterWidth: CGFloat = 168
+    static let instructionEditorApproximateCharactersPerLine = 54
+
+    static func contentSize(showingPreview: Bool) -> NSSize {
+        showingPreview ? preferredContentSize : composerOnlyContentSize
+    }
 
     @ObservedObject var manager: UniversalAIEditManager
     @FocusState private var instructionFocused: Bool
@@ -18,15 +25,22 @@ struct UniversalAIEditPanelView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 compactContextSummary
-                previewArea
-                Spacer(minLength: 0)
                 composerArea
+
+                if manager.shouldShowPreview {
+                    previewArea
+                }
+
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 14)
         }
-        .frame(width: Self.preferredContentSize.width, height: Self.preferredContentSize.height)
+        .frame(
+            width: Self.contentSize(showingPreview: manager.shouldShowPreview).width,
+            height: Self.contentSize(showingPreview: manager.shouldShowPreview).height
+        )
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(AppTheme.Surface.window)
@@ -48,6 +62,9 @@ struct UniversalAIEditPanelView: View {
         }
         .onChange(of: manager.isVoiceRecording) { _, isRecording in
             recordingPulse = isRecording
+        }
+        .onChange(of: manager.shouldShowPreview) { _, shouldShowPreview in
+            manager.updatePanelSize(showingPreview: shouldShowPreview)
         }
         .sheet(isPresented: $isScreenContextInspectorPresented) {
             if let screenText = manager.context?.screenText, !screenText.isEmpty {
@@ -109,7 +126,7 @@ struct UniversalAIEditPanelView: View {
                     contextChip(
                         title: selectionChipTitle,
                         systemImage: "text.cursor",
-                        isActive: manager.context?.selectedText?.isEmpty == false
+                        isActive: manager.hasEditableSelection
                     )
                     screenContextChip
                     contextChip(
@@ -162,8 +179,12 @@ struct UniversalAIEditPanelView: View {
     private var contextSummaryText: String {
         var parts: [String] = []
 
-        if manager.context?.selectedText?.isEmpty == false, manager.mode == .replaceSelection {
-            parts.append(String(localized: "selection captured"))
+        if manager.hasEditableSelection, manager.mode == .replaceSelection {
+            parts.append(
+                manager.context?.editTargetSource == .focusedInput
+                    ? String(localized: "input captured")
+                    : String(localized: "selection captured")
+            )
         } else {
             parts.append(manager.mode.displayName.lowercased())
         }
@@ -189,8 +210,10 @@ struct UniversalAIEditPanelView: View {
         if diagnostics.contains(.selectedTextCaptureFailed) {
             return String(localized: "Selection failed")
         }
-        if manager.context?.selectedText?.isEmpty == false {
-            return String(localized: "Selection captured")
+        if manager.hasEditableSelection {
+            return manager.context?.editTargetSource == .focusedInput
+                ? String(localized: "Input captured")
+                : String(localized: "Selection captured")
         }
         return String(localized: "No selection")
     }
@@ -319,7 +342,7 @@ struct UniversalAIEditPanelView: View {
                     secondaryActionCluster
                     composerPrimaryButton
                 }
-                .frame(width: 238, alignment: .trailing)
+                .frame(width: Self.composerActionClusterWidth, alignment: .trailing)
             }
         }
         .padding(10)
@@ -342,6 +365,14 @@ struct UniversalAIEditPanelView: View {
             composerStatusPill
 
             Spacer(minLength: 8)
+
+            if let hint = manager.happyPathShortcutHint {
+                Text(hint)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Accent.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
         .frame(minHeight: 24)
     }
@@ -372,13 +403,10 @@ struct UniversalAIEditPanelView: View {
     }
 
     private var instructionEditorHeight: CGFloat {
-        let text = manager.instruction
-        let lines = text
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { max(1, Int(ceil(Double($0.count) / 62.0))) }
-            .reduce(0, +)
-        let resolvedLines = max(1, lines)
-        return min(96, max(40, CGFloat(resolvedLines) * 20 + 18))
+        UniversalAIEditFlow.instructionEditorHeight(
+            text: manager.instruction,
+            approximateCharactersPerLine: Self.instructionEditorApproximateCharactersPerLine
+        )
     }
 
     @ViewBuilder
@@ -522,7 +550,7 @@ struct UniversalAIEditPanelView: View {
 
     private var canShowDiffToggle: Bool {
         manager.mode == .replaceSelection &&
-            manager.context?.selectedText?.isEmpty == false &&
+            manager.hasEditableSelection &&
             !manager.generatedText.isEmpty
     }
 

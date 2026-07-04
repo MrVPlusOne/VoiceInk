@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Foundation
 
 enum UniversalAIEditMode: String, Equatable {
@@ -87,10 +88,52 @@ enum UniversalAIEditEscapeAction: Equatable {
     case closePanel
 }
 
+enum UniversalAIEditEditTargetSource: Equatable {
+    case explicitSelection
+    case focusedInput
+}
+
+struct UniversalAIEditFocusedInputSnapshot: Equatable {
+    let text: String
+    let role: String?
+}
+
+enum UniversalAIEditShortcutHintAction: Equatable {
+    case startVoiceInput
+    case stopAndTranscribe
+    case generate
+    case apply
+
+    var title: String {
+        switch self {
+        case .startVoiceInput:
+            return String(localized: "start voice input")
+        case .stopAndTranscribe:
+            return String(localized: "stop and transcribe")
+        case .generate:
+            return String(localized: "Generate")
+        case .apply:
+            return String(localized: "Apply")
+        }
+    }
+}
+
 enum UniversalAIEditFlow {
     static func hasEditableSelection(_ selectedText: String?) -> Bool {
         guard let selectedText else { return false }
         return !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    static func normalizedFocusedInputText(role: String?, value: String?) -> String? {
+        guard let value else { return nil }
+        guard isSupportedFocusedInputRole(role) else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : value
+    }
+
+    static func isSupportedFocusedInputRole(_ role: String?) -> Bool {
+        guard let role else { return false }
+        return supportedFocusedInputRoles.contains(role)
     }
 
     static func canApply(
@@ -177,12 +220,69 @@ enum UniversalAIEditFlow {
         !panelIsVisible
     }
 
+    static func shouldShowPreview(hasGeneratedText: Bool) -> Bool {
+        hasGeneratedText
+    }
+
+    static func instructionEditorHeight(
+        text: String,
+        approximateCharactersPerLine: Int
+    ) -> CGFloat {
+        let charactersPerLine = max(1, approximateCharactersPerLine)
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { max(1, Int(ceil(Double($0.count) / Double(charactersPerLine)))) }
+            .reduce(0, +)
+        let resolvedLines = max(1, lines)
+        return min(116, max(48, CGFloat(resolvedLines) * 21 + 24))
+    }
+
+    static func shortcutHintAction(
+        phase: UniversalAIEditPhase,
+        isVoiceRecording: Bool,
+        canGenerate: Bool,
+        hasGeneratedText: Bool,
+        isResultFresh: Bool
+    ) -> UniversalAIEditShortcutHintAction? {
+        if isVoiceRecording && phase == .listening {
+            return .stopAndTranscribe
+        }
+
+        switch phase {
+        case .ready, .failed:
+            return canGenerate ? .generate : .startVoiceInput
+        case .preview:
+            return hasGeneratedText && isResultFresh ? .apply : .generate
+        case .idle, .capturing, .listening, .transcribingInstruction, .generating, .applying:
+            return nil
+        }
+    }
+
+    static func shortcutHintText(
+        shortcutDisplay: String?,
+        action: UniversalAIEditShortcutHintAction?
+    ) -> String? {
+        guard let shortcutDisplay,
+              !shortcutDisplay.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let action else {
+            return nil
+        }
+
+        return String(format: String(localized: "Press %@ to %@"), shortcutDisplay, action.title)
+    }
+
     static func escapeAction(
         phase: UniversalAIEditPhase,
         isVoiceRecording: Bool
     ) -> UniversalAIEditEscapeAction {
         isVoiceRecording && phase == .listening ? .cancelVoiceRecording : .closePanel
     }
+
+    private static let supportedFocusedInputRoles: Set<String> = [
+        kAXTextFieldRole as String,
+        kAXTextAreaRole as String,
+        kAXComboBoxRole as String
+    ]
 }
 
 struct UniversalAIEditInputSnapshot: Equatable {
@@ -217,9 +317,31 @@ struct UniversalAIEditContext: Equatable {
     let capturedAt: Date
     let target: UniversalAIEditTargetSnapshot
     let selectedText: String?
+    let editTargetSource: UniversalAIEditEditTargetSource?
+    let focusedInput: UniversalAIEditFocusedInputSnapshot?
     let clipboardText: String?
     let screenText: String?
     let diagnostics: [UniversalAIEditCaptureDiagnostic]
+
+    init(
+        capturedAt: Date,
+        target: UniversalAIEditTargetSnapshot,
+        selectedText: String?,
+        editTargetSource: UniversalAIEditEditTargetSource? = nil,
+        focusedInput: UniversalAIEditFocusedInputSnapshot? = nil,
+        clipboardText: String?,
+        screenText: String?,
+        diagnostics: [UniversalAIEditCaptureDiagnostic]
+    ) {
+        self.capturedAt = capturedAt
+        self.target = target
+        self.selectedText = selectedText
+        self.editTargetSource = editTargetSource
+        self.focusedInput = focusedInput
+        self.clipboardText = clipboardText
+        self.screenText = screenText
+        self.diagnostics = diagnostics
+    }
 
     var mode: UniversalAIEditMode {
         if UniversalAIEditFlow.hasEditableSelection(selectedText) {

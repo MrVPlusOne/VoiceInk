@@ -1,3 +1,4 @@
+import ApplicationServices
 import Foundation
 import Testing
 @testable import VoiceInk
@@ -336,13 +337,121 @@ struct UniversalAIEditPromptBuilderTests {
     @Test func aiEditPanelUsesCompactFootprintWithScrollablePreview() {
         #expect(UniversalAIEditPanelView.preferredContentSize.width <= 640)
         #expect(UniversalAIEditPanelView.preferredContentSize.height <= 560)
+        #expect(UniversalAIEditPanelView.composerOnlyContentSize.width == UniversalAIEditPanelView.preferredContentSize.width)
+        #expect(UniversalAIEditPanelView.composerOnlyContentSize.height < UniversalAIEditPanelView.preferredContentSize.height)
         #expect(UniversalAIEditPanelView.previewBoxHeight <= 0.45 * UniversalAIEditPanelView.preferredContentSize.height)
         #expect(UniversalAIEditPanelView.previewBoxHeight >= 200)
+        #expect(UniversalAIEditPanelView.contentSize(showingPreview: false) == UniversalAIEditPanelView.composerOnlyContentSize)
+        #expect(UniversalAIEditPanelView.contentSize(showingPreview: true) == UniversalAIEditPanelView.preferredContentSize)
+    }
+
+    @Test func composerLayoutGivesInstructionEditorMoreRoom() {
+        #expect(UniversalAIEditPanelView.composerActionClusterWidth <= 180)
+        let contentWidth = UniversalAIEditPanelView.preferredContentSize.width - 32
+        let composerInnerWidth = contentWidth - 20
+        let editorWidth = composerInnerWidth - UniversalAIEditPanelView.composerActionClusterWidth - 10
+        #expect(editorWidth >= 410)
+    }
+
+    @Test func instructionEditorHeightIsGenerousForWrappedText() {
+        let shortHeight = UniversalAIEditFlow.instructionEditorHeight(
+            text: "Make this friendlier.",
+            approximateCharactersPerLine: UniversalAIEditPanelView.instructionEditorApproximateCharactersPerLine
+        )
+        let wrappedHeight = UniversalAIEditFlow.instructionEditorHeight(
+            text: "Rewrite this paragraph so it sounds clear, warm, and specific while keeping the original intent intact.",
+            approximateCharactersPerLine: UniversalAIEditPanelView.instructionEditorApproximateCharactersPerLine
+        )
+
+        #expect(shortHeight >= 48)
+        #expect(wrappedHeight > shortHeight)
+    }
+
+    @Test func previewOnlyShowsAfterGeneratedTextExists() {
+        #expect(!UniversalAIEditFlow.shouldShowPreview(hasGeneratedText: false))
+        #expect(UniversalAIEditFlow.shouldShowPreview(hasGeneratedText: true))
     }
 
     @Test func aiEditOpenStartsVoiceUnlessPanelIsAlreadyVisible() {
         #expect(UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: false))
         #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: true))
+    }
+
+    @Test func focusedInputFallbackCanBecomeEditTarget() {
+        #expect(UniversalAIEditFlow.normalizedFocusedInputText(
+            role: kAXTextFieldRole as String,
+            value: " Existing text "
+        ) == " Existing text ")
+        #expect(UniversalAIEditFlow.normalizedFocusedInputText(
+            role: kAXButtonRole as String,
+            value: "Button title"
+        ) == nil)
+        #expect(UniversalAIEditFlow.normalizedFocusedInputText(
+            role: kAXTextAreaRole as String,
+            value: "   \n"
+        ) == nil)
+
+        let context = UniversalAIEditContext(
+            capturedAt: Date(timeIntervalSince1970: 0),
+            target: UniversalAIEditTargetSnapshot(
+                appName: "Notes",
+                bundleIdentifier: "com.apple.Notes",
+                processIdentifier: 101,
+                focusedWindowTitle: "Ideas",
+                focusedWindowFrame: nil
+            ),
+            selectedText: "Full input text",
+            editTargetSource: .focusedInput,
+            focusedInput: UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextAreaRole as String
+            ),
+            clipboardText: nil,
+            screenText: nil,
+            diagnostics: []
+        )
+
+        #expect(context.mode == .replaceSelection)
+        #expect(context.editTargetSource == .focusedInput)
+    }
+
+    @Test func shortcutHintUsesOnlyConfiguredShortcutAndCurrentAction() {
+        #expect(UniversalAIEditFlow.shortcutHintText(
+            shortcutDisplay: nil,
+            action: .generate
+        ) == nil)
+        #expect(UniversalAIEditFlow.shortcutHintAction(
+            phase: .ready,
+            isVoiceRecording: false,
+            canGenerate: false,
+            hasGeneratedText: false,
+            isResultFresh: false
+        ) == .startVoiceInput)
+        #expect(UniversalAIEditFlow.shortcutHintAction(
+            phase: .ready,
+            isVoiceRecording: false,
+            canGenerate: true,
+            hasGeneratedText: false,
+            isResultFresh: false
+        ) == .generate)
+        #expect(UniversalAIEditFlow.shortcutHintAction(
+            phase: .preview,
+            isVoiceRecording: false,
+            canGenerate: true,
+            hasGeneratedText: true,
+            isResultFresh: true
+        ) == .apply)
+        #expect(UniversalAIEditFlow.shortcutHintAction(
+            phase: .listening,
+            isVoiceRecording: true,
+            canGenerate: false,
+            hasGeneratedText: false,
+            isResultFresh: false
+        ) == .stopAndTranscribe)
+        #expect(UniversalAIEditFlow.shortcutHintText(
+            shortcutDisplay: "Right Cmd",
+            action: .apply
+        )?.contains("Right Cmd") == true)
     }
 
     @Test func generatedInputSnapshotChangesWhenInstructionModeOrContextChanges() {

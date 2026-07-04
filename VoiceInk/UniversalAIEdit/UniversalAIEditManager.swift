@@ -87,6 +87,25 @@ final class UniversalAIEditManager: ObservableObject {
         UniversalAIEditFlow.hasEditableSelection(context?.selectedText)
     }
 
+    var shouldShowPreview: Bool {
+        UniversalAIEditFlow.shouldShowPreview(hasGeneratedText: hasGeneratedText)
+    }
+
+    var happyPathShortcutHint: String? {
+        let shortcutDisplay = ShortcutStore.shortcut(for: .universalAIEdit)?.displayString
+        let action = UniversalAIEditFlow.shortcutHintAction(
+            phase: phase,
+            isVoiceRecording: isVoiceRecording,
+            canGenerate: canGenerate,
+            hasGeneratedText: hasGeneratedText,
+            isResultFresh: isResultFresh
+        )
+        return UniversalAIEditFlow.shortcutHintText(
+            shortcutDisplay: shortcutDisplay,
+            action: action
+        )
+    }
+
     var primaryAction: UniversalAIEditPrimaryAction {
         UniversalAIEditFlow.primaryAction(
             hasGeneratedText: hasGeneratedText,
@@ -233,6 +252,20 @@ final class UniversalAIEditManager: ObservableObject {
         mode = requestedMode
     }
 
+    func updatePanelSize(showingPreview: Bool) {
+        guard let panel else { return }
+
+        let size = UniversalAIEditPanelView.contentSize(showingPreview: showingPreview)
+        hostingController?.view.frame = NSRect(origin: .zero, size: size)
+        panel.contentMinSize = size
+
+        let frameSize = panel.frameRect(forContentRect: NSRect(origin: .zero, size: size)).size
+        var frame = panel.frame
+        frame.origin.y = frame.maxY - frameSize.height
+        frame.size = frameSize
+        panel.setFrame(frame, display: true, animate: false)
+    }
+
     func close() {
         if isVoiceRecording {
             Task { @MainActor in
@@ -375,6 +408,23 @@ final class UniversalAIEditManager: ObservableObject {
                 return
             }
 
+            if context?.editTargetSource == .focusedInput {
+                guard let context,
+                      replaceFocusedInputValue(text, context: context, targetApp: targetApp) else {
+                    _ = ClipboardManager.copyToClipboard(text)
+                    updateCurrentHistoryRecord(outcome: .copied, note: UniversalAIEditError.pasteUnavailable.localizedDescription)
+                    NotificationManager.shared.showNotification(
+                        title: UniversalAIEditError.pasteUnavailable.localizedDescription,
+                        type: .warning,
+                        duration: 5.0
+                    )
+                    return
+                }
+
+                updateCurrentHistoryRecord(outcome: .applied)
+                return
+            }
+
             let pasteResult = await CursorPaster.pasteAtCursorAndWaitUntilPosted(text)
             if pasteResult.didPostPasteCommand {
                 updateCurrentHistoryRecord(outcome: .applied)
@@ -495,7 +545,7 @@ final class UniversalAIEditManager: ObservableObject {
 
     private func showPanel(autoFocusInstruction: Bool) {
         shouldFocusInstructionOnAppear = autoFocusInstruction
-        let size = UniversalAIEditPanelView.preferredContentSize
+        let size = UniversalAIEditPanelView.contentSize(showingPreview: shouldShowPreview)
         let newPanel = UniversalAIEditPanel(manager: self, size: size)
         let view = UniversalAIEditPanelView(manager: self)
         let controller = NSHostingController(rootView: view)
@@ -752,6 +802,39 @@ final class UniversalAIEditManager: ObservableObject {
         }
 
         return nil
+    }
+
+    private func replaceFocusedInputValue(
+        _ replacementText: String,
+        context: UniversalAIEditContext,
+        targetApp: NSRunningApplication
+    ) -> Bool {
+        guard let focusedInput = context.focusedInput,
+              let capturedText = context.selectedText,
+              focusedInput.text == capturedText else {
+            return false
+        }
+
+        let appElement = AXUIElementCreateApplication(targetApp.processIdentifier)
+        guard let focusedElement = copyAXElementAttribute(kAXFocusedUIElementAttribute, from: appElement) else {
+            return false
+        }
+
+        let role = copyStringAttribute(kAXRoleAttribute, from: focusedElement)
+        guard UniversalAIEditFlow.isSupportedFocusedInputRole(role) else {
+            return false
+        }
+
+        let currentText = copyStringAttribute(kAXValueAttribute, from: focusedElement)
+        guard currentText == capturedText else {
+            return false
+        }
+
+        return AXUIElementSetAttributeValue(
+            focusedElement,
+            kAXValueAttribute as CFString,
+            replacementText as CFString
+        ) == .success
     }
 
     private func frameDistance(_ first: CGRect, _ second: CGRect) -> CGFloat {

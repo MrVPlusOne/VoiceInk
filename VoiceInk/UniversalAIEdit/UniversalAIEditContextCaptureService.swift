@@ -31,11 +31,22 @@ final class UniversalAIEditContextCaptureService {
         }
 
         let selectedTextResult = await selectedTextCapture
+        var selectedText = selectedTextResult.text
+        var editTargetSource: UniversalAIEditEditTargetSource?
+        var focusedInput: UniversalAIEditFocusedInputSnapshot?
+
         switch selectedTextResult {
         case .captured:
+            editTargetSource = .explicitSelection
             break
         case .noSelection:
-            diagnostics.append(.selectedTextUnavailable)
+            if let fallbackInput = focusedInputSnapshot(for: target) {
+                selectedText = fallbackInput.text
+                focusedInput = fallbackInput
+                editTargetSource = .focusedInput
+            } else {
+                diagnostics.append(.selectedTextUnavailable)
+            }
         case .accessibilityMissing:
             diagnostics.append(.accessibilityPermissionMissing)
         case .failed:
@@ -45,11 +56,33 @@ final class UniversalAIEditContextCaptureService {
         return UniversalAIEditContext(
             capturedAt: Date(),
             target: target,
-            selectedText: selectedTextResult.text,
+            selectedText: selectedText,
+            editTargetSource: editTargetSource,
+            focusedInput: focusedInput,
             clipboardText: normalized(clipboardText),
             screenText: normalized(screenText),
             diagnostics: diagnostics
         )
+    }
+
+    private func focusedInputSnapshot(for target: UniversalAIEditTargetSnapshot) -> UniversalAIEditFocusedInputSnapshot? {
+        guard let processIdentifier = target.processIdentifier,
+              AXIsProcessTrusted() else {
+            return nil
+        }
+
+        let appElement = AXUIElementCreateApplication(processIdentifier)
+        guard let focusedElement = copyAXElementAttribute(kAXFocusedUIElementAttribute, from: appElement) else {
+            return nil
+        }
+
+        let role = copyStringAttribute(kAXRoleAttribute, from: focusedElement)
+        let value = copyStringAttribute(kAXValueAttribute, from: focusedElement)
+        guard let text = UniversalAIEditFlow.normalizedFocusedInputText(role: role, value: value) else {
+            return nil
+        }
+
+        return UniversalAIEditFocusedInputSnapshot(text: text, role: role)
     }
 
     private func targetSnapshot() -> UniversalAIEditTargetSnapshot {
