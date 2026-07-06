@@ -67,9 +67,9 @@ struct UniversalAIEditPanelView: View {
             manager.updatePanelSize(showingPreview: shouldShowPreview)
         }
         .sheet(isPresented: $isScreenContextInspectorPresented) {
-            if let screenText = manager.context?.screenText, !screenText.isEmpty {
+            if let contextText = liveScreenContextInspectionText {
                 AIEditScreenContextInspectorView(
-                    contextText: screenText,
+                    contextText: contextText,
                     subtitle: screenContextInspectorSubtitle
                 )
             }
@@ -189,7 +189,9 @@ struct UniversalAIEditPanelView: View {
             parts.append(manager.mode.displayName.lowercased())
         }
 
-        if manager.context?.screenText?.isEmpty == false {
+        if manager.context?.screenshotContext != nil {
+            parts.append(String(localized: "screenshot context"))
+        } else if manager.context?.screenText?.isEmpty == false {
             parts.append(String(localized: "screen context"))
         }
 
@@ -228,6 +230,15 @@ struct UniversalAIEditPanelView: View {
         if diagnostics.contains(.screenCaptureFailed) {
             return String(localized: "Screen failed")
         }
+        if diagnostics.contains(.screenshotContextUnsupported) {
+            return String(localized: "OCR fallback")
+        }
+        if diagnostics.contains(.screenshotContextUnavailable) {
+            return String(localized: "OCR fallback")
+        }
+        if manager.context?.screenshotContext != nil {
+            return String(localized: "Screenshot context")
+        }
         if diagnostics.contains(.screenTextUnavailable) {
             return String(localized: "No screen text")
         }
@@ -242,6 +253,16 @@ struct UniversalAIEditPanelView: View {
             return String(localized: "Captured from \(targetName) before this panel opened")
         }
         return String(localized: "Captured before this panel opened")
+    }
+
+    private var liveScreenContextInspectionText: String? {
+        if let screenshotContext = manager.context?.screenshotContext {
+            return screenshotContext.redactedMetadata
+        }
+        guard let screenText = manager.context?.screenText, !screenText.isEmpty else {
+            return nil
+        }
+        return screenText
     }
 
     @ViewBuilder
@@ -294,7 +315,7 @@ struct UniversalAIEditPanelView: View {
 
     @ViewBuilder
     private var screenContextChip: some View {
-        if manager.context?.screenText?.isEmpty == false {
+        if liveScreenContextInspectionText != nil {
             Button {
                 isScreenContextInspectorPresented = true
             } label: {

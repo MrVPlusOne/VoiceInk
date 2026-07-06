@@ -127,7 +127,7 @@ struct InlineHistoryView: View {
                 if !newValue { screenContextEntryId = nil }
             }
         )) {
-            if let screenContext = screenContextRecord?.sentScreenContext {
+            if let screenContext = screenContextRecord?.sentScreenContextForInspection {
                 AIEditScreenContextInspectorView(
                     contextText: screenContext,
                     subtitle: "Sent with this AI Edit request"
@@ -319,7 +319,7 @@ struct InlineHistoryView: View {
                         onShowDebug: entry.aiEditRecord == nil ? nil : {
                             openAIEditDetail(entryID: entry.id)
                         },
-                        onShowScreenContext: entry.aiEditRecord?.sentScreenContext == nil ? nil : {
+                        onShowScreenContext: entry.aiEditRecord?.sentScreenContextForInspection == nil ? nil : {
                             openScreenContext(entryID: entry.id)
                         }
                     )

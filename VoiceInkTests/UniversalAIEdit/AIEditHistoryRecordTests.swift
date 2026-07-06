@@ -87,6 +87,36 @@ struct AIEditHistoryRecordTests {
         #expect(record.sentScreenContext == nil)
     }
 
+    @Test func exposesRedactedScreenshotContextMetadataForInspection() {
+        let target = UniversalAIEditTargetSnapshot(
+            appName: "Slack",
+            bundleIdentifier: "com.tinyspeck.slackmacgap",
+            processIdentifier: 42,
+            focusedWindowTitle: "Project",
+            focusedWindowFrame: nil
+        )
+        let record = AIEditHistoryRecord(
+            instruction: "Keep formatting",
+            mode: .replaceSelection,
+            generatedText: "Formatted result",
+            providerName: "OpenAI",
+            modelName: "gpt-5.5",
+            generationDuration: 1.0,
+            target: target,
+            aiRequestUserMessage: """
+            <ATTACHED_SCREENSHOT_CONTEXT>
+            Attached screenshot omitted from history/debug storage.
+            Media Type: image/jpeg
+            Dimensions: 1200x800
+            </ATTACHED_SCREENSHOT_CONTEXT>
+            """
+        )
+
+        #expect(record.sentScreenContext == nil)
+        #expect(record.sentScreenshotContextMetadata?.contains("Attached screenshot omitted") == true)
+        #expect(record.sentScreenContextForInspection?.contains("Dimensions: 1200x800") == true)
+    }
+
     @Test func recordsOutcomeTransitions() {
         let record = AIEditHistoryRecord(
             instruction: "Draft a reply",

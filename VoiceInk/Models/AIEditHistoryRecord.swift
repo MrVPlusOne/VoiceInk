@@ -137,6 +137,16 @@ final class AIEditHistoryRecord {
         return Self.taggedContent(named: "CURRENT_WINDOW_CONTEXT", in: userMessage)
     }
 
+    var sentScreenshotContextMetadata: String? {
+        guard let userMessage = aiRequestUserMessage else { return nil }
+        return Self.taggedContent(named: "ATTACHED_SCREENSHOT_CONTEXT", in: userMessage)
+            ?? Self.taggedContent(named: "SCREENSHOT_CONTEXT_FALLBACK", in: userMessage)
+    }
+
+    var sentScreenContextForInspection: String? {
+        sentScreenContext ?? sentScreenshotContextMetadata
+    }
+
     func recordOutcome(_ outcome: AIEditHistoryOutcome, note: String? = nil) {
         outcomeRawValue = outcome.rawValue
         outcomeNote = Self.normalized(note)

@@ -12,21 +12,34 @@ final class UniversalAIEditContextCaptureService {
             : nil
         var diagnostics: [UniversalAIEditCaptureDiagnostic] = []
         let screenText: String?
+        let screenshotContext: UniversalAIEditScreenshotContext?
 
         if configuration?.useScreenCaptureContext == true {
             if CGPreflightScreenCaptureAccess() {
-                screenText = await ScreenCaptureService().captureAndExtractText()
-                if screenText == nil {
+                let shouldUseScreenshot = Self.shouldUseScreenshotContext(configuration: configuration)
+                if UniversalAIEditScreenshotContextSettings.isEnabled && !shouldUseScreenshot {
+                    diagnostics.append(.screenshotContextUnsupported)
+                }
+
+                let captureResult = await ScreenCaptureService().captureWindowContext(includeScreenshot: shouldUseScreenshot)
+                screenText = captureResult?.contextText
+                screenshotContext = captureResult?.screenshotContext
+
+                if captureResult == nil {
                     diagnostics.append(.screenCaptureFailed)
-                } else if screenText?.contains("No text detected via OCR") == true {
+                } else if shouldUseScreenshot && screenshotContext == nil {
+                    diagnostics.append(.screenshotContextUnavailable)
+                } else if !shouldUseScreenshot && screenText?.contains("No text detected via OCR") == true {
                     diagnostics.append(.screenTextUnavailable)
                 }
             } else {
                 screenText = nil
+                screenshotContext = nil
                 diagnostics.append(.screenRecordingPermissionMissing)
             }
         } else {
             screenText = nil
+            screenshotContext = nil
             diagnostics.append(.screenContextDisabled)
         }
 
@@ -61,6 +74,7 @@ final class UniversalAIEditContextCaptureService {
             focusedInput: focusedInput,
             clipboardText: normalized(clipboardText),
             screenText: normalized(screenText),
+            screenshotContext: screenshotContext,
             diagnostics: diagnostics
         )
     }
@@ -87,6 +101,20 @@ final class UniversalAIEditContextCaptureService {
             role: role,
             identifier: normalized(copyStringAttribute(kAXIdentifierAttribute, from: focusedElement)),
             frame: elementFrame(focusedElement)
+        )
+    }
+
+    private static func shouldUseScreenshotContext(configuration: EnhancementRuntimeConfiguration?) -> Bool {
+        guard UniversalAIEditScreenshotContextSettings.isEnabled,
+              configuration?.useScreenCaptureContext == true,
+              let provider = configuration?.provider else {
+            return false
+        }
+
+        let modelName = configuration?.modelName ?? provider.defaultModel
+        return UniversalAIEditScreenshotCapability.supportsScreenshotContext(
+            provider: provider,
+            modelName: modelName
         )
     }
 

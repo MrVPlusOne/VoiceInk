@@ -200,6 +200,9 @@ enum BackupImporter {
         if let aiEditUserPreferences = general.aiEditUserPreferences {
             UserDefaults.standard.set(aiEditUserPreferences, forKey: UniversalAIEditUserPreferences.userDefaultsKey)
         }
+        if let useAIEditScreenshotContext = general.useAIEditScreenshotContext {
+            UserDefaults.standard.set(useAIEditScreenshotContext, forKey: UniversalAIEditScreenshotContextSettings.userDefaultsKey)
+        }
 
         print("Successfully imported general settings.")
     }

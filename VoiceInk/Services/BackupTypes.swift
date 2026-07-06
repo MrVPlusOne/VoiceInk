@@ -109,6 +109,7 @@ struct GeneralBackup: Codable {
     let restoreClipboardAfterPaste: Bool?
     let clipboardRestoreDelay: Double?
     let aiEditUserPreferences: String?
+    let useAIEditScreenshotContext: Bool?
 }
 
 struct WordBackup: Codable {

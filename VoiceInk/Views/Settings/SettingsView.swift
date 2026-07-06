@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage(AppAppearancePreference.userDefaultsKey) private var appAppearancePreference = AppAppearancePreference.system
     @AppStorage(AppLanguagePreference.userDefaultsKey) private var appLanguagePreference = AppLanguagePreference.systemValue
     @AppStorage(UniversalAIEditUserPreferences.userDefaultsKey) private var aiEditUserPreferences = ""
+    @AppStorage(UniversalAIEditScreenshotContextSettings.userDefaultsKey) private var useAIEditScreenshotContext = false
     @State private var showResetOnboardingAlert = false
     @State private var showLanguageRestartAlert = false
     @State private var hasCancelRecordingShortcut = ShortcutStore.shortcut(for: .cancelRecorder) != nil
@@ -150,6 +151,13 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle(isOn: $useAIEditScreenshotContext) {
+                    HStack(spacing: 4) {
+                        Text("Use Screenshot Context")
+                        InfoTip("When available for the selected AI Edit model, send a compressed screenshot of the active window instead of OCR screen text.")
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("User Preferences")
                         .font(.headline)

@@ -1,8 +1,15 @@
 import Foundation
 import AppKit
+import ImageIO
 import Vision
 import ScreenCaptureKit
 import ApplicationServices
+import UniformTypeIdentifiers
+
+struct ActiveWindowCaptureResult {
+    let contextText: String
+    let screenshotContext: UniversalAIEditScreenshotContext?
+}
 
 @MainActor
 class ScreenCaptureService: ObservableObject {
@@ -17,6 +24,9 @@ class ScreenCaptureService: ObservableObject {
 
     private static let captureTimeout: TimeInterval = 3.0
     private static let maximumCaptureDimension: CGFloat = 2800
+    private static let screenshotContextMaxDimension: CGFloat = 1920
+    private static let screenshotContextJPEGQuality: CGFloat = 0.85
+    private static let screenshotContextDetail = "high"
     private static let focusedWindowFrameTolerance: CGFloat = 96
 
     static func requestScreenCapturePermissionRegistration() async -> Bool {
@@ -38,6 +48,10 @@ class ScreenCaptureService: ObservableObject {
     }
 
     func captureAndExtractText() async -> String? {
+        await captureWindowContext(includeScreenshot: false)?.contextText
+    }
+
+    func captureWindowContext(includeScreenshot: Bool) async -> ActiveWindowCaptureResult? {
         guard !isCapturing else { return nil }
 
         isCapturing = true
@@ -48,17 +62,18 @@ class ScreenCaptureService: ObservableObject {
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let focusedWindowHint = makeFocusedWindowHint(excluding: currentPID)
 
-        guard let contextText = await Self.withTimeout(seconds: Self.captureTimeout, operation: {
-            await Self.captureAndExtractWindowText(
+        guard let result = await Self.withTimeout(seconds: Self.captureTimeout, operation: {
+            await Self.captureWindowContext(
                 focusedWindowHint: focusedWindowHint,
-                currentPID: currentPID
+                currentPID: currentPID,
+                includeScreenshot: includeScreenshot
             )
         }) else {
             return nil
         }
 
-        lastCapturedText = contextText
-        return contextText
+        lastCapturedText = result.contextText
+        return result
     }
 
     private func makeFocusedWindowHint(excluding currentPID: pid_t) -> FocusedWindowHint? {
@@ -89,10 +104,11 @@ class ScreenCaptureService: ObservableObject {
         )
     }
 
-    private nonisolated static func captureAndExtractWindowText(
+    private nonisolated static func captureWindowContext(
         focusedWindowHint: FocusedWindowHint?,
-        currentPID: pid_t
-    ) async -> String? {
+        currentPID: pid_t,
+        includeScreenshot: Bool
+    ) async -> ActiveWindowCaptureResult? {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
 
@@ -129,7 +145,14 @@ class ScreenCaptureService: ObservableObject {
                 contextText += "Window Content:\nNo text detected via OCR"
             }
 
-            return contextText
+            let screenshotContext = includeScreenshot
+                ? makeScreenshotContext(from: cgImage, appName: appName, windowTitle: title)
+                : nil
+
+            return ActiveWindowCaptureResult(
+                contextText: contextText,
+                screenshotContext: screenshotContext
+            )
 
         } catch {
             return nil
@@ -221,6 +244,77 @@ class ScreenCaptureService: ObservableObject {
         } catch {
             return nil
         }
+    }
+
+    private nonisolated static func makeScreenshotContext(
+        from cgImage: CGImage,
+        appName: String,
+        windowTitle: String
+    ) -> UniversalAIEditScreenshotContext? {
+        guard let encoded = encodeJPEGForScreenshotContext(cgImage) else {
+            return nil
+        }
+
+        return UniversalAIEditScreenshotContext(
+            data: encoded.data,
+            mediaType: "image/jpeg",
+            width: encoded.width,
+            height: encoded.height,
+            byteCount: encoded.data.count,
+            sourceWidth: cgImage.width,
+            sourceHeight: cgImage.height,
+            detail: screenshotContextDetail,
+            applicationName: appName,
+            windowTitle: windowTitle
+        )
+    }
+
+    private nonisolated static func encodeJPEGForScreenshotContext(_ cgImage: CGImage) -> (data: Data, width: Int, height: Int)? {
+        let sourceWidth = cgImage.width
+        let sourceHeight = cgImage.height
+        guard sourceWidth > 0, sourceHeight > 0 else { return nil }
+
+        let longestSide = max(sourceWidth, sourceHeight)
+        let scale = min(1, screenshotContextMaxDimension / CGFloat(longestSide))
+        let outputWidth = max(1, Int((CGFloat(sourceWidth) * scale).rounded()))
+        let outputHeight = max(1, Int((CGFloat(sourceHeight) * scale).rounded()))
+
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                data: nil,
+                width: outputWidth,
+                height: outputHeight,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: outputWidth, height: outputHeight))
+
+        guard let outputImage = context.makeImage() else { return nil }
+
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        ) else {
+            return nil
+        }
+
+        let options: CFDictionary = [
+            kCGImageDestinationLossyCompressionQuality: screenshotContextJPEGQuality
+        ] as CFDictionary
+
+        CGImageDestinationAddImage(destination, outputImage, options)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+
+        return (data as Data, outputWidth, outputHeight)
     }
 
     private nonisolated static func withTimeout<T: Sendable>(

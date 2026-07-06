@@ -175,7 +175,8 @@ class ImportExportService {
             isExperimentalFeaturesEnabled: UserDefaults.standard.bool(forKey: "isExperimentalFeaturesEnabled"),
             restoreClipboardAfterPaste: UserDefaults.standard.bool(forKey: "restoreClipboardAfterPaste"),
             clipboardRestoreDelay: UserDefaults.standard.double(forKey: "clipboardRestoreDelay"),
-            aiEditUserPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey)
+            aiEditUserPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey),
+            useAIEditScreenshotContext: UserDefaults.standard.bool(forKey: UniversalAIEditScreenshotContextSettings.userDefaultsKey)
         )
 
         let exportedSettings = BackupFile(

@@ -40,23 +40,78 @@ final class UniversalAIEditService {
         }
 
         let customVocabulary = CustomVocabularyService.shared.getCustomVocabulary(from: modelContext)
-        let systemPrompt = UniversalAIEditPromptBuilder.systemPrompt(mode: mode)
+        let shouldUseScreenshot = shouldUseScreenshotContext(
+            context: context,
+            provider: provider,
+            modelName: modelName
+        )
+        let screenContextMode: UniversalAIEditScreenContextPromptMode = shouldUseScreenshot ? .screenshot : .ocrText
+        let systemPrompt = UniversalAIEditPromptBuilder.systemPrompt(
+            mode: mode,
+            screenContextMode: screenContextMode
+        )
         let userPayload = UniversalAIEditPromptBuilder.userPayload(
             instruction: trimmedInstruction,
             mode: mode,
             context: context,
             customVocabulary: customVocabulary,
-            userPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey)
+            userPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey),
+            screenContextMode: screenContextMode
         )
 
         let start = Date()
-        let response = try await aiService.completeChat(
-            provider: provider,
-            modelName: configuration.modelName,
-            messages: [.user(userPayload)],
-            systemPrompt: systemPrompt,
-            timeout: requestTimeout
-        )
+        let response: String
+        let requestSystemPrompt: String
+        let requestUserPayload: String
+        if shouldUseScreenshot, let screenshotContext = context.screenshotContext {
+            do {
+                response = try await generateWithScreenshotContext(
+                    provider: provider,
+                    modelName: modelName,
+                    userPayload: userPayload,
+                    screenshotContext: screenshotContext,
+                    systemPrompt: systemPrompt
+                )
+                requestSystemPrompt = systemPrompt
+                requestUserPayload = userPayload
+            } catch {
+                let fallbackSystemPrompt = UniversalAIEditPromptBuilder.systemPrompt(
+                    mode: mode,
+                    screenContextMode: .ocrText
+                )
+                let fallbackUserPayload = UniversalAIEditPromptBuilder.userPayload(
+                    instruction: trimmedInstruction,
+                    mode: mode,
+                    context: context,
+                    customVocabulary: customVocabulary,
+                    userPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey),
+                    screenContextMode: .ocrText
+                )
+                requestSystemPrompt = fallbackSystemPrompt
+                requestUserPayload = Self.appendingScreenshotFallbackMetadata(
+                    to: fallbackUserPayload,
+                    screenshotContext: screenshotContext,
+                    error: error
+                )
+                response = try await aiService.completeChat(
+                    provider: provider,
+                    modelName: configuration.modelName,
+                    messages: [.user(fallbackUserPayload)],
+                    systemPrompt: requestSystemPrompt,
+                    timeout: requestTimeout
+                )
+            }
+        } else {
+            response = try await aiService.completeChat(
+                provider: provider,
+                modelName: configuration.modelName,
+                messages: [.user(userPayload)],
+                systemPrompt: systemPrompt,
+                timeout: requestTimeout
+            )
+            requestSystemPrompt = systemPrompt
+            requestUserPayload = userPayload
+        }
         let filtered = AIEnhancementOutputFilter.filter(response)
         guard !filtered.isEmpty else {
             throw UniversalAIEditError.emptyModelOutput
@@ -67,8 +122,8 @@ final class UniversalAIEditService {
             provider: provider,
             modelName: modelName,
             duration: Date().timeIntervalSince(start),
-            aiRequestSystemMessage: systemPrompt,
-            aiRequestUserMessage: userPayload
+            aiRequestSystemMessage: requestSystemPrompt,
+            aiRequestUserMessage: requestUserPayload
         )
     }
 
@@ -81,5 +136,83 @@ final class UniversalAIEditService {
         default:
             return APIKeyManager.shared.hasAPIKey(forProvider: provider.rawValue)
         }
+    }
+
+    private func shouldUseScreenshotContext(
+        context: UniversalAIEditContext,
+        provider: AIProvider,
+        modelName: String
+    ) -> Bool {
+        guard UniversalAIEditScreenshotContextSettings.isEnabled,
+              context.screenshotContext != nil else {
+            return false
+        }
+
+        return UniversalAIEditScreenshotCapability.supportsScreenshotContext(
+            provider: provider,
+            modelName: modelName
+        )
+    }
+
+    private func generateWithScreenshotContext(
+        provider: AIProvider,
+        modelName: String,
+        userPayload: String,
+        screenshotContext: UniversalAIEditScreenshotContext,
+        systemPrompt: String
+    ) async throws -> String {
+        guard provider == .openAI,
+              let baseURL = URL(string: provider.baseURL) else {
+            throw UniversalAIEditError.modelNotConfigured
+        }
+
+        let temperature = modelName.lowercased().hasPrefix("gpt-5") ? 1.0 : 0.3
+        let reasoningEffort = ReasoningConfig.getReasoningParameter(
+            for: provider,
+            modelName: modelName
+        )
+
+        return try await UniversalAIEditOpenAIMultimodalClient.chatCompletion(
+            baseURL: baseURL,
+            apiKey: try apiKey(for: provider, modelName: modelName),
+            model: modelName,
+            userPayload: userPayload,
+            screenshot: screenshotContext,
+            systemPrompt: systemPrompt,
+            temperature: temperature,
+            reasoningEffort: reasoningEffort,
+            timeout: requestTimeout
+        )
+    }
+
+    private func apiKey(for provider: AIProvider, modelName: String) throws -> String {
+        if provider == .custom {
+            guard let customConfiguration = CustomAIProviderManager.shared.requestConfiguration(forModel: modelName) else {
+                throw UniversalAIEditError.modelNotConfigured
+            }
+            return customConfiguration.apiKey
+        }
+
+        guard let key = APIKeyManager.shared.getAPIKey(forProvider: provider.rawValue), !key.isEmpty else {
+            throw UniversalAIEditError.modelNotConfigured
+        }
+        return key
+    }
+
+    private static func appendingScreenshotFallbackMetadata(
+        to userPayload: String,
+        screenshotContext: UniversalAIEditScreenshotContext,
+        error: Error
+    ) -> String {
+        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        return """
+        \(userPayload)
+
+        <SCREENSHOT_CONTEXT_FALLBACK>
+        Screenshot context was requested, but the image request failed. VoiceInk fell back to OCR text screen context.
+        Failure: \(message)
+        \(screenshotContext.redactedMetadata)
+        </SCREENSHOT_CONTEXT_FALLBACK>
+        """
     }
 }

@@ -54,6 +54,7 @@ enum AppDefaults {
         "EnhancementTimeoutSeconds": 7,
         "EnhancementRetryOnTimeout": true,
         UniversalAIEditUserPreferences.userDefaultsKey: "",
+        UniversalAIEditScreenshotContextSettings.userDefaultsKey: false,
 
         // Model
         "PrewarmModelOnWake": true,
