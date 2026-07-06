@@ -204,13 +204,19 @@ final class UniversalAIEditService {
         screenshotContext: UniversalAIEditScreenshotContext,
         error: Error
     ) -> String {
-        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let fallbackReason: String
+        if let multimodalError = error as? UniversalAIEditMultimodalRequestError {
+            fallbackReason = multimodalError.fallbackMetadataDescription
+        } else {
+            fallbackReason = "screenshot_request_failed"
+        }
+
         return """
         \(userPayload)
 
         <SCREENSHOT_CONTEXT_FALLBACK>
         Screenshot context was requested, but the image request failed. VoiceInk fell back to OCR text screen context.
-        Failure: \(message)
+        Failure: \(fallbackReason)
         \(screenshotContext.redactedMetadata)
         </SCREENSHOT_CONTEXT_FALLBACK>
         """

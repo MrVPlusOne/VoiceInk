@@ -59,38 +59,50 @@ enum UniversalAIEditOpenAIMultimodalClient {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw UniversalAIEditMultimodalRequestError.network("No HTTP response received.")
+            throw UniversalAIEditMultimodalRequestError.network
         }
         guard (200..<300).contains(http.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "No error details"
-            throw UniversalAIEditMultimodalRequestError.http(statusCode: http.statusCode, message: message)
+            throw UniversalAIEditMultimodalRequestError.http(statusCode: http.statusCode)
         }
 
         do {
             let decoded = try JSONDecoder().decode(OpenAIChatResponse.self, from: data)
             return decoded.choices.first?.message.content ?? ""
         } catch {
-            throw UniversalAIEditMultimodalRequestError.decoding(error.localizedDescription)
+            throw UniversalAIEditMultimodalRequestError.decoding
         }
     }
 }
 
 enum UniversalAIEditMultimodalRequestError: LocalizedError {
     case encodingFailed
-    case network(String)
-    case http(statusCode: Int, message: String)
-    case decoding(String)
+    case network
+    case http(statusCode: Int)
+    case decoding
 
     var errorDescription: String? {
         switch self {
         case .encodingFailed:
             return String(localized: "Failed to encode the screenshot request.")
-        case .network(let message):
-            return String(format: String(localized: "Screenshot request network error: %@"), message)
-        case .http(let statusCode, let message):
-            return String(format: String(localized: "Screenshot request failed with HTTP %d: %@"), statusCode, message)
-        case .decoding(let message):
-            return String(format: String(localized: "Failed to read screenshot response: %@"), message)
+        case .network:
+            return String(localized: "Screenshot request failed because no HTTP response was received.")
+        case .http(let statusCode):
+            return String(format: String(localized: "Screenshot request failed with HTTP %d."), statusCode)
+        case .decoding:
+            return String(localized: "Screenshot request succeeded, but VoiceInk could not read the response.")
+        }
+    }
+
+    var fallbackMetadataDescription: String {
+        switch self {
+        case .encodingFailed:
+            return "encoding_failed"
+        case .network:
+            return "network_or_no_http_response"
+        case .http(let statusCode):
+            return "http_status_\(statusCode)"
+        case .decoding:
+            return "response_decoding_failed"
         }
     }
 }

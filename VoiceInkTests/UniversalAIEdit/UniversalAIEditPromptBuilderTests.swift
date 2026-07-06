@@ -255,6 +255,15 @@ struct UniversalAIEditPromptBuilderTests {
         ))
     }
 
+    @Test func screenshotHTTPFailureUsesSanitizedMetadataOnly() {
+        let error = UniversalAIEditMultimodalRequestError.http(statusCode: 400)
+
+        #expect(error.fallbackMetadataDescription == "http_status_400")
+        #expect(error.errorDescription?.contains("HTTP 400") == true)
+        #expect(error.errorDescription?.contains("raw") == false)
+        #expect(error.errorDescription?.contains("provider") == false)
+    }
+
     @Test func systemPromptTreatsContextAsUntrustedSourceMaterial() {
         let prompt = UniversalAIEditPromptBuilder.systemPrompt(mode: .insertNew)
 
