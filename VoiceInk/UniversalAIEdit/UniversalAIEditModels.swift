@@ -554,7 +554,7 @@ struct UniversalAIEditScreenshotContext: Equatable {
 
     var redactedMetadata: String {
         var lines = [
-            "Attached screenshot omitted from history/debug storage.",
+            "Attached screenshot retained in local AI Edit history/debug storage.",
             "Media Type: \(mediaType)",
             "Dimensions: \(width)x\(height)",
             "Source Dimensions: \(sourceWidth)x\(sourceHeight)",
@@ -927,6 +927,7 @@ struct UniversalAIEditResult: Equatable {
     let duration: TimeInterval
     let aiRequestSystemMessage: String
     let aiRequestUserMessage: String
+    let screenshotContextForHistory: UniversalAIEditScreenshotContext?
 }
 
 enum UniversalAIEditUserPreferences {

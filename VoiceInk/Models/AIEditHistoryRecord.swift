@@ -58,6 +58,16 @@ final class AIEditHistoryRecord {
     var outcomeNote: String?
     var aiRequestSystemMessage: String?
     var aiRequestUserMessage: String?
+    var screenshotContextData: Data?
+    var screenshotContextMediaType: String?
+    var screenshotContextWidth: Int?
+    var screenshotContextHeight: Int?
+    var screenshotContextByteCount: Int?
+    var screenshotContextSourceWidth: Int?
+    var screenshotContextSourceHeight: Int?
+    var screenshotContextDetail: String?
+    var screenshotContextApplicationName: String?
+    var screenshotContextWindowTitle: String?
 
     init(
         instruction: String,
@@ -72,6 +82,7 @@ final class AIEditHistoryRecord {
         outcomeNote: String? = nil,
         aiRequestSystemMessage: String? = nil,
         aiRequestUserMessage: String? = nil,
+        screenshotContext: UniversalAIEditScreenshotContext? = nil,
         timestamp: Date = Date()
     ) {
         id = UUID()
@@ -96,6 +107,16 @@ final class AIEditHistoryRecord {
         self.outcomeNote = Self.normalized(outcomeNote)
         self.aiRequestSystemMessage = Self.normalized(aiRequestSystemMessage)
         self.aiRequestUserMessage = Self.normalized(aiRequestUserMessage)
+        screenshotContextData = screenshotContext?.data
+        screenshotContextMediaType = Self.normalized(screenshotContext?.mediaType)
+        screenshotContextWidth = screenshotContext?.width
+        screenshotContextHeight = screenshotContext?.height
+        screenshotContextByteCount = screenshotContext?.byteCount
+        screenshotContextSourceWidth = screenshotContext?.sourceWidth
+        screenshotContextSourceHeight = screenshotContext?.sourceHeight
+        screenshotContextDetail = Self.normalized(screenshotContext?.detail)
+        screenshotContextApplicationName = Self.normalized(screenshotContext?.applicationName)
+        screenshotContextWindowTitle = Self.normalized(screenshotContext?.windowTitle)
     }
 
     var mode: UniversalAIEditMode {
@@ -145,6 +166,43 @@ final class AIEditHistoryRecord {
 
     var sentScreenContextForInspection: String? {
         sentScreenContext ?? sentScreenshotContextMetadata
+    }
+
+    var hasRetainedScreenshotContext: Bool {
+        screenshotContextData?.isEmpty == false
+    }
+
+    var hasInspectableScreenContext: Bool {
+        hasRetainedScreenshotContext || sentScreenContextForInspection != nil
+    }
+
+    var retainedScreenshotContextMetadata: String? {
+        guard hasRetainedScreenshotContext else { return nil }
+
+        var lines: [String] = []
+        if let mediaType = screenshotContextMediaType {
+            lines.append("Media Type: \(mediaType)")
+        }
+        if let width = screenshotContextWidth, let height = screenshotContextHeight {
+            lines.append("Dimensions: \(width)x\(height)")
+        }
+        if let sourceWidth = screenshotContextSourceWidth, let sourceHeight = screenshotContextSourceHeight {
+            lines.append("Source Dimensions: \(sourceWidth)x\(sourceHeight)")
+        }
+        if let byteCount = screenshotContextByteCount {
+            lines.append("Compressed Bytes: \(byteCount)")
+        }
+        if let detail = screenshotContextDetail {
+            lines.append("Detail: \(detail)")
+        }
+        if let applicationName = screenshotContextApplicationName {
+            lines.append("Application: \(applicationName)")
+        }
+        if let windowTitle = screenshotContextWindowTitle {
+            lines.append("Window: \(windowTitle)")
+        }
+
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     func recordOutcome(_ outcome: AIEditHistoryOutcome, note: String? = nil) {

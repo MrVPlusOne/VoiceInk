@@ -736,7 +736,8 @@ final class UniversalAIEditManager: ObservableObject {
             generationDuration: result.duration,
             target: context.target,
             aiRequestSystemMessage: result.aiRequestSystemMessage,
-            aiRequestUserMessage: result.aiRequestUserMessage
+            aiRequestUserMessage: result.aiRequestUserMessage,
+            screenshotContext: result.screenshotContextForHistory
         )
 
         engine.modelContext.insert(record)

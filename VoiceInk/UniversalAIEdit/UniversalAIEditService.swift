@@ -63,7 +63,9 @@ final class UniversalAIEditService {
         let response: String
         let requestSystemPrompt: String
         let requestUserPayload: String
+        let screenshotContextForHistory: UniversalAIEditScreenshotContext?
         if shouldUseScreenshot, let screenshotContext = context.screenshotContext {
+            screenshotContextForHistory = screenshotContext
             do {
                 response = try await generateWithScreenshotContext(
                     provider: provider,
@@ -111,6 +113,7 @@ final class UniversalAIEditService {
             )
             requestSystemPrompt = systemPrompt
             requestUserPayload = userPayload
+            screenshotContextForHistory = nil
         }
         let filtered = AIEnhancementOutputFilter.filter(response)
         guard !filtered.isEmpty else {
@@ -123,7 +126,8 @@ final class UniversalAIEditService {
             modelName: modelName,
             duration: Date().timeIntervalSince(start),
             aiRequestSystemMessage: requestSystemPrompt,
-            aiRequestUserMessage: requestUserPayload
+            aiRequestUserMessage: requestUserPayload,
+            screenshotContextForHistory: screenshotContextForHistory
         )
     }
 

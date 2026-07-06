@@ -197,7 +197,7 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!prompt.contains("Do not invent app-specific details from OCR context"))
     }
 
-    @Test func screenshotPayloadOmitsOCRScreenContextAndStoresRedactedMetadata() {
+    @Test func screenshotPayloadOmitsOCRScreenContextAndRecordsRetainedScreenshotMetadata() {
         let context = UniversalAIEditContext(
             capturedAt: Date(timeIntervalSince1970: 0),
             target: UniversalAIEditTargetSnapshot(
@@ -234,7 +234,7 @@ struct UniversalAIEditPromptBuilderTests {
         )
 
         #expect(payload.contains("<ATTACHED_SCREENSHOT_CONTEXT>"))
-        #expect(payload.contains("Attached screenshot omitted from history/debug storage."))
+        #expect(payload.contains("Attached screenshot retained in local AI Edit history/debug storage."))
         #expect(payload.contains("Dimensions: 1200x800"))
         #expect(!payload.contains("<CURRENT_WINDOW_CONTEXT>"))
         #expect(!payload.contains("OCR text should not be sent"))

@@ -42,9 +42,11 @@ struct AIEditHistoryDetailView: View {
         }
         .padding(.vertical, 12)
         .sheet(isPresented: $isScreenContextInspectorPresented) {
-            if let screenContext = record.sentScreenContextForInspection {
+            if record.hasInspectableScreenContext {
                 AIEditScreenContextInspectorView(
-                    contextText: screenContext,
+                    contextText: screenContextInspectionText,
+                    screenshotData: record.screenshotContextData,
+                    screenshotMetadata: record.retainedScreenshotContextMetadata,
                     subtitle: "Sent with this AI Edit request"
                 )
             }
@@ -72,7 +74,7 @@ struct AIEditHistoryDetailView: View {
 
             Spacer()
 
-            if record.sentScreenContextForInspection != nil {
+            if record.hasInspectableScreenContext {
                 screenContextButton
             }
 
@@ -142,7 +144,7 @@ struct AIEditHistoryDetailView: View {
 
                 Spacer()
 
-                if record.sentScreenContextForInspection != nil {
+                if record.hasInspectableScreenContext {
                     screenContextButton
                 }
             }
@@ -183,6 +185,13 @@ struct AIEditHistoryDetailView: View {
         }
         .buttonStyle(.plain)
         .help("View sent screen context")
+    }
+
+    private var screenContextInspectionText: String? {
+        if record.hasRetainedScreenshotContext {
+            return record.sentScreenContext
+        }
+        return record.sentScreenContextForInspection
     }
 }
 

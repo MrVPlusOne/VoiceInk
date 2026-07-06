@@ -64,6 +64,13 @@ struct InlineHistoryView: View {
         return displayedEntries.first { $0.id == id }?.aiEditRecord
     }
 
+    private func screenContextInspectionText(for record: AIEditHistoryRecord) -> String? {
+        if record.hasRetainedScreenshotContext {
+            return record.sentScreenContext
+        }
+        return record.sentScreenContextForInspection
+    }
+
     private func openPanel(mode: InlineHistoryPanelMode, entryID: String? = nil) {
         panelMode = mode
         panelEntryId = entryID
@@ -127,9 +134,11 @@ struct InlineHistoryView: View {
                 if !newValue { screenContextEntryId = nil }
             }
         )) {
-            if let screenContext = screenContextRecord?.sentScreenContextForInspection {
+            if let record = screenContextRecord, record.hasInspectableScreenContext {
                 AIEditScreenContextInspectorView(
-                    contextText: screenContext,
+                    contextText: screenContextInspectionText(for: record),
+                    screenshotData: record.screenshotContextData,
+                    screenshotMetadata: record.retainedScreenshotContextMetadata,
                     subtitle: "Sent with this AI Edit request"
                 )
             }
@@ -319,7 +328,7 @@ struct InlineHistoryView: View {
                         onShowDebug: entry.aiEditRecord == nil ? nil : {
                             openAIEditDetail(entryID: entry.id)
                         },
-                        onShowScreenContext: entry.aiEditRecord?.sentScreenContextForInspection == nil ? nil : {
+                        onShowScreenContext: entry.aiEditRecord?.hasInspectableScreenContext != true ? nil : {
                             openScreenContext(entryID: entry.id)
                         }
                     )

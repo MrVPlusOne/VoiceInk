@@ -67,9 +67,11 @@ struct UniversalAIEditPanelView: View {
             manager.updatePanelSize(showingPreview: shouldShowPreview)
         }
         .sheet(isPresented: $isScreenContextInspectorPresented) {
-            if let contextText = liveScreenContextInspectionText {
+            if liveScreenContextInspectionText != nil || liveScreenshotContextData != nil {
                 AIEditScreenContextInspectorView(
-                    contextText: contextText,
+                    contextText: liveScreenContextInspectionText,
+                    screenshotData: liveScreenshotContextData,
+                    screenshotMetadata: liveScreenshotContextMetadata,
                     subtitle: screenContextInspectorSubtitle
                 )
             }
@@ -256,13 +258,18 @@ struct UniversalAIEditPanelView: View {
     }
 
     private var liveScreenContextInspectionText: String? {
-        if let screenshotContext = manager.context?.screenshotContext {
-            return screenshotContext.redactedMetadata
-        }
         guard let screenText = manager.context?.screenText, !screenText.isEmpty else {
             return nil
         }
         return screenText
+    }
+
+    private var liveScreenshotContextData: Data? {
+        manager.context?.screenshotContext?.data
+    }
+
+    private var liveScreenshotContextMetadata: String? {
+        manager.context?.screenshotContext?.redactedMetadata
     }
 
     @ViewBuilder

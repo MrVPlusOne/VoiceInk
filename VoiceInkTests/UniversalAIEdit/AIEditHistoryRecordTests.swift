@@ -87,7 +87,7 @@ struct AIEditHistoryRecordTests {
         #expect(record.sentScreenContext == nil)
     }
 
-    @Test func exposesRedactedScreenshotContextMetadataForInspection() {
+    @Test func exposesScreenshotContextMetadataForInspection() {
         let target = UniversalAIEditTargetSnapshot(
             appName: "Slack",
             bundleIdentifier: "com.tinyspeck.slackmacgap",
@@ -105,7 +105,7 @@ struct AIEditHistoryRecordTests {
             target: target,
             aiRequestUserMessage: """
             <ATTACHED_SCREENSHOT_CONTEXT>
-            Attached screenshot omitted from history/debug storage.
+            Attached screenshot retained in local AI Edit history/debug storage.
             Media Type: image/jpeg
             Dimensions: 1200x800
             </ATTACHED_SCREENSHOT_CONTEXT>
@@ -113,8 +113,50 @@ struct AIEditHistoryRecordTests {
         )
 
         #expect(record.sentScreenContext == nil)
-        #expect(record.sentScreenshotContextMetadata?.contains("Attached screenshot omitted") == true)
+        #expect(record.sentScreenshotContextMetadata?.contains("Attached screenshot retained") == true)
         #expect(record.sentScreenContextForInspection?.contains("Dimensions: 1200x800") == true)
+    }
+
+    @Test func retainsCompressedScreenshotContextForLocalHistoryInspection() {
+        let target = UniversalAIEditTargetSnapshot(
+            appName: "Slack",
+            bundleIdentifier: "com.tinyspeck.slackmacgap",
+            processIdentifier: 42,
+            focusedWindowTitle: "Project",
+            focusedWindowFrame: nil
+        )
+        let screenshot = UniversalAIEditScreenshotContext(
+            data: Data([0xFF, 0xD8, 0xFF, 0xD9]),
+            mediaType: "image/jpeg",
+            width: 1200,
+            height: 800,
+            byteCount: 4,
+            sourceWidth: 2400,
+            sourceHeight: 1600,
+            detail: "high",
+            applicationName: "Slack",
+            windowTitle: "Project"
+        )
+        let record = AIEditHistoryRecord(
+            instruction: "Keep formatting",
+            mode: .replaceSelection,
+            generatedText: "Formatted result",
+            providerName: "OpenAI",
+            modelName: "gpt-5.5",
+            generationDuration: 1.0,
+            target: target,
+            screenshotContext: screenshot
+        )
+
+        #expect(record.hasRetainedScreenshotContext)
+        #expect(record.hasInspectableScreenContext)
+        #expect(record.screenshotContextData == screenshot.data)
+        #expect(record.screenshotContextMediaType == "image/jpeg")
+        #expect(record.screenshotContextWidth == 1200)
+        #expect(record.screenshotContextHeight == 800)
+        #expect(record.screenshotContextByteCount == 4)
+        #expect(record.retainedScreenshotContextMetadata?.contains("Compressed Bytes: 4") == true)
+        #expect(record.retainedScreenshotContextMetadata?.contains("Application: Slack") == true)
     }
 
     @Test func recordsOutcomeTransitions() {
