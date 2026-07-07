@@ -135,6 +135,21 @@ struct Shortcut: Codable, Equatable {
         return keyCode
     }
 
+    static func logicalModifierFlags(forModifierKeyCode keyCode: UInt16) -> NSEvent.ModifierFlags? {
+        switch keyCode {
+        case UInt16(kVK_Shift), UInt16(kVK_RightShift):
+            return [.shift]
+        case UInt16(kVK_Control), UInt16(kVK_RightControl):
+            return [.control]
+        case UInt16(kVK_Option), UInt16(kVK_RightOption):
+            return [.option]
+        case UInt16(kVK_Command), UInt16(kVK_RightCommand):
+            return [.command]
+        default:
+            return nil
+        }
+    }
+
     static func normalizedModifierFlags(_ flags: NSEvent.ModifierFlags, forKeyCode keyCode: UInt16?) -> NSEvent.ModifierFlags {
         var normalizedFlags = flags.shortcutNormalized
 
@@ -370,6 +385,67 @@ struct Shortcut: Codable, Equatable {
         UInt16(kVK_ANSI_KeypadEnter): "Keypad Enter",
         UInt16(kVK_ANSI_KeypadEquals): "Keypad ="
     ]
+}
+
+enum ShortcutModifierCaptureTransition: Equatable {
+    case none
+    case preview(Shortcut)
+    case finish(Shortcut)
+}
+
+struct ShortcutModifierCaptureState: Equatable {
+    private(set) var pendingModifierShortcut: Shortcut?
+    private(set) var peakModifierFlags: NSEvent.ModifierFlags = []
+
+    mutating func reset() {
+        pendingModifierShortcut = nil
+        peakModifierFlags = []
+    }
+
+    mutating func handleFlagsChanged(
+        keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> ShortcutModifierCaptureTransition {
+        let modifiers = Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: keyCode)
+
+        if !modifiers.isEmpty {
+            return previewShortcut(keyCode: keyCode, modifiers: modifiers)
+        }
+
+        if let pendingModifierShortcut {
+            reset()
+            return .finish(pendingModifierShortcut)
+        }
+
+        if Shortcut.isFunctionKeyCode(keyCode),
+           Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: nil).contains(.function) {
+            return .none
+        }
+
+        guard let inferredModifiers = Shortcut.logicalModifierFlags(forModifierKeyCode: keyCode) else {
+            return .none
+        }
+
+        return previewShortcut(keyCode: keyCode, modifiers: inferredModifiers)
+    }
+
+    private mutating func previewShortcut(
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags
+    ) -> ShortcutModifierCaptureTransition {
+        peakModifierFlags.formUnion(modifiers)
+        let singleModifierKeyCode = Shortcut.modifierKeyCodeForSingleModifierEvent(
+            keyCode: keyCode,
+            modifiers: peakModifierFlags
+        )
+        let shortcut = Shortcut.modifierOnly(
+            keyCode: singleModifierKeyCode,
+            modifierFlags: peakModifierFlags
+        )
+
+        pendingModifierShortcut = shortcut
+        return .preview(shortcut)
+    }
 }
 
 private extension NSEvent.ModifierFlags {

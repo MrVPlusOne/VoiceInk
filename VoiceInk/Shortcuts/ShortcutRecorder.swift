@@ -166,8 +166,7 @@ final class ShortcutRecorderModel: ObservableObject {
     private var localMonitor: Any?
     private var onCapture: ((Shortcut) -> Void)?
     private var activeAction: ShortcutAction?
-    private var pendingModifierShortcut: Shortcut?
-    private var peakModifierFlags: NSEvent.ModifierFlags = []
+    private var modifierCaptureState = ShortcutModifierCaptureState()
 
     deinit {
         removeRecordingMonitor()
@@ -213,8 +212,7 @@ final class ShortcutRecorderModel: ObservableObject {
         previewShortcut = nil
         onCapture = nil
         activeAction = nil
-        pendingModifierShortcut = nil
-        peakModifierFlags = []
+        modifierCaptureState.reset()
     }
 
     private func showErrorNotification(_ title: String) {
@@ -275,32 +273,13 @@ final class ShortcutRecorderModel: ObservableObject {
     }
 
     private func handleFlagsChanged(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Bool {
-        let modifiers = Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: keyCode)
-
-        if modifiers.isEmpty,
-           Shortcut.isFunctionKeyCode(keyCode),
-           Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: nil).contains(.function) {
-            return true
-        }
-
-        if !modifiers.isEmpty {
-            peakModifierFlags.formUnion(modifiers)
-            let singleModifierKeyCode = Shortcut.modifierKeyCodeForSingleModifierEvent(
-                keyCode: keyCode,
-                modifiers: peakModifierFlags
-            )
-            let shortcut = Shortcut.modifierOnly(
-                keyCode: singleModifierKeyCode,
-                modifierFlags: peakModifierFlags
-            )
-
-            pendingModifierShortcut = shortcut
+        switch modifierCaptureState.handleFlagsChanged(keyCode: keyCode, modifierFlags: modifierFlags) {
+        case .none:
+            break
+        case .preview(let shortcut):
             previewShortcut = shortcut
-            return true
-        }
-
-        if let pendingModifierShortcut {
-            finish(with: pendingModifierShortcut)
+        case .finish(let shortcut):
+            finish(with: shortcut)
         }
 
         return true

@@ -40,4 +40,73 @@ struct ShortcutTests {
         #expect(rightCommand.displayString == "Right ⌘")
         #expect(!leftCommand.conflicts(with: rightCommand))
     }
+
+    @Test func rightCommandEmptyFlagsCanPreviewAndFinishModifierShortcut() {
+        var state = ShortcutModifierCaptureState()
+
+        let preview = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightCommand),
+            modifierFlags: []
+        )
+
+        guard case .preview(let previewShortcut) = preview else {
+            Issue.record("Expected empty-flags right Command to preview a shortcut")
+            return
+        }
+
+        #expect(previewShortcut.displayString == "Right ⌘")
+        #expect(previewShortcut.keyCode == UInt16(kVK_RightCommand))
+        #expect(previewShortcut.modifierFlags == [.command])
+
+        let finish = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightCommand),
+            modifierFlags: []
+        )
+
+        guard case .finish(let finishedShortcut) = finish else {
+            Issue.record("Expected empty-flags right Command release to finish the pending shortcut")
+            return
+        }
+
+        #expect(finishedShortcut == previewShortcut)
+        #expect(state.pendingModifierShortcut == nil)
+        #expect(state.peakModifierFlags.isEmpty)
+    }
+
+    @Test func emptyFlagsModifierFallbackPreservesLeftRightIdentity() {
+        var leftState = ShortcutModifierCaptureState()
+        var rightState = ShortcutModifierCaptureState()
+
+        let leftPreview = leftState.handleFlagsChanged(
+            keyCode: UInt16(kVK_Command),
+            modifierFlags: []
+        )
+        let rightPreview = rightState.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightCommand),
+            modifierFlags: []
+        )
+
+        guard case .preview(let leftCommand) = leftPreview,
+              case .preview(let rightCommand) = rightPreview else {
+            Issue.record("Expected both command sides to preview modifier-only shortcuts")
+            return
+        }
+
+        #expect(leftCommand.displayString == "Left ⌘")
+        #expect(rightCommand.displayString == "Right ⌘")
+        #expect(!leftCommand.conflicts(with: rightCommand))
+    }
+
+    @Test func emptyFlagsNonModifierEventDoesNotCreatePendingShortcut() {
+        var state = ShortcutModifierCaptureState()
+
+        let transition = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_ANSI_A),
+            modifierFlags: []
+        )
+
+        #expect(transition == .none)
+        #expect(state.pendingModifierShortcut == nil)
+        #expect(state.peakModifierFlags.isEmpty)
+    }
 }
