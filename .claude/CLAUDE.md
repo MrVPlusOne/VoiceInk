@@ -14,3 +14,13 @@ To install: copy `~/Downloads/VoiceInk.app` to `/Applications/VoiceInk.app`.
 Local builds have these limitations vs signed releases:
 - No iCloud dictionary sync
 - No automatic updates (pull new code and rebuild to update)
+
+## Testing
+
+For routine pure logic assertions that should not launch the app test host, run:
+
+```bash
+swift test
+```
+
+This exercises the non-hosted `VoiceInkLogicTests` package target. Keep `xcodebuild ... build-for-testing` for hosted app test compilation, and avoid `xcodebuild test` on the hosted `VoiceInkTests` target during routine agent verification because it launches `VoiceInk.app` as the test host.
