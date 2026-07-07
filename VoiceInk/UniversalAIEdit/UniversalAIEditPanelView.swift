@@ -57,6 +57,9 @@ struct UniversalAIEditPanelView: View {
             guard isFocused else { return }
             manager.cancelVoiceInstructionForManualInput()
         }
+        .onChange(of: manager.instructionFocusRequest) { _, _ in
+            focusInstructionEditor()
+        }
         .onChange(of: manager.instruction) { _, _ in
             manager.cancelVoiceInstructionForManualInput()
         }
@@ -75,6 +78,12 @@ struct UniversalAIEditPanelView: View {
                     subtitle: screenContextInspectorSubtitle
                 )
             }
+        }
+    }
+
+    private func focusInstructionEditor() {
+        DispatchQueue.main.async {
+            instructionFocused = true
         }
     }
 

@@ -17,6 +17,7 @@ final class UniversalAIEditManager: ObservableObject {
     @Published private(set) var voiceMeterLevel: Double = 0
     @Published private(set) var voiceMeterSamples: [Double] = []
     @Published private(set) var shouldFocusInstructionOnAppear = true
+    @Published private(set) var instructionFocusRequest = 0
 
     private let contextCaptureService = UniversalAIEditContextCaptureService()
     private let editService = UniversalAIEditService()
@@ -219,11 +220,17 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     func handleEscapeKey() {
-        switch UniversalAIEditFlow.escapeAction(phase: phase, isVoiceRecording: isVoiceRecording) {
-        case .cancelVoiceRecording:
-            cancelVoiceInstructionAndReturnToEditing()
+        switch UniversalAIEditFlow.escapeAction(
+            phase: phase,
+            isVoiceRecording: isVoiceRecording,
+            instruction: instruction
+        ) {
+        case .cancelVoiceRecordingAndFocusInstruction:
+            cancelVoiceInstructionAndReturnToEditing(focusInstruction: true)
         case .closePanel:
             close()
+        case .ignore:
+            break
         }
     }
 
@@ -454,13 +461,16 @@ final class UniversalAIEditManager: ObservableObject {
         }
     }
 
-    func cancelVoiceInstructionAndReturnToEditing() {
+    func cancelVoiceInstructionAndReturnToEditing(focusInstruction: Bool = false) {
         guard isVoiceRecording else { return }
 
         Task { @MainActor in
             await cancelVoiceInstruction()
             phase = .ready
             statusText = nil
+            if focusInstruction {
+                requestInstructionFocus()
+            }
         }
     }
 
@@ -711,6 +721,10 @@ final class UniversalAIEditManager: ObservableObject {
             voiceMeterLevel = 0
             voiceMeterSamples = []
         }
+    }
+
+    private func requestInstructionFocus() {
+        instructionFocusRequest &+= 1
     }
 
     private func isCurrentGeneration(sessionID: UUID, generationID: UUID) -> Bool {

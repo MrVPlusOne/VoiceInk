@@ -362,19 +362,35 @@ struct UniversalAIEditPromptBuilderTests {
         ) == .generate)
     }
 
-    @Test func escapeCancelsOnlyActiveVoiceRecording() {
+    @Test func escapeFocusesInstructionAfterActiveVoiceRecording() {
         #expect(UniversalAIEditFlow.escapeAction(
             phase: .listening,
-            isVoiceRecording: true
-        ) == .cancelVoiceRecording)
+            isVoiceRecording: true,
+            instruction: "Draft this manually"
+        ) == .cancelVoiceRecordingAndFocusInstruction)
+    }
+
+    @Test func escapeDismissesOnlyEmptyInstruction() {
         #expect(UniversalAIEditFlow.escapeAction(
             phase: .ready,
-            isVoiceRecording: false
+            isVoiceRecording: false,
+            instruction: ""
         ) == .closePanel)
         #expect(UniversalAIEditFlow.escapeAction(
-            phase: .transcribingInstruction,
-            isVoiceRecording: false
+            phase: .ready,
+            isVoiceRecording: false,
+            instruction: "  \n"
         ) == .closePanel)
+        #expect(UniversalAIEditFlow.escapeAction(
+            phase: .ready,
+            isVoiceRecording: false,
+            instruction: "Rewrite this"
+        ) == .ignore)
+        #expect(UniversalAIEditFlow.escapeAction(
+            phase: .preview,
+            isVoiceRecording: false,
+            instruction: "Rewrite this"
+        ) == .ignore)
     }
 
     @Test func voiceToggleOnlyAllowsListeningStopWhileBusy() {

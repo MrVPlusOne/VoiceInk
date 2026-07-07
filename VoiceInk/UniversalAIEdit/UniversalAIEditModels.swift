@@ -84,8 +84,9 @@ enum UniversalAIEditComposerPrimaryAction: Equatable {
 }
 
 enum UniversalAIEditEscapeAction: Equatable {
-    case cancelVoiceRecording
+    case cancelVoiceRecordingAndFocusInstruction
     case closePanel
+    case ignore
 }
 
 enum UniversalAIEditEditTargetSource: Equatable {
@@ -330,9 +331,18 @@ enum UniversalAIEditFlow {
 
     static func escapeAction(
         phase: UniversalAIEditPhase,
-        isVoiceRecording: Bool
+        isVoiceRecording: Bool,
+        instruction: String
     ) -> UniversalAIEditEscapeAction {
-        isVoiceRecording && phase == .listening ? .cancelVoiceRecording : .closePanel
+        if isVoiceRecording && phase == .listening {
+            return .cancelVoiceRecordingAndFocusInstruction
+        }
+
+        if !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .ignore
+        }
+
+        return .closePanel
     }
 
     private static let supportedFocusedInputRoles: Set<String> = [
