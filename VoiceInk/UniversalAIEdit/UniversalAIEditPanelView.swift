@@ -408,6 +408,7 @@ struct UniversalAIEditPanelView: View {
     private var instructionTextEditor: some View {
         TextEditor(text: $manager.instruction)
             .font(.system(size: 14))
+            .modelBoundTextInput()
             .focused($instructionFocused)
             .scrollContentBackground(.hidden)
             .padding(.horizontal, 8)

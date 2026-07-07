@@ -164,6 +164,7 @@ struct SettingsView: View {
 
                     TextEditor(text: $aiEditUserPreferences)
                         .font(.body)
+                        .modelBoundTextInput()
                         .frame(minHeight: 88)
                         .textEditorStyle(.plain)
                         .overlay(

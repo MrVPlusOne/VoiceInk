@@ -933,10 +933,9 @@ struct UniversalAIEditResult: Equatable {
 enum UniversalAIEditUserPreferences {
     static let userDefaultsKey = "UniversalAIEditUserPreferences"
 
-    static func normalized(_ text: String?) -> String? {
+    static func modelBoundText(_ text: String?) -> String? {
         guard let text else { return nil }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
     }
 }
 
@@ -1051,19 +1050,18 @@ enum UniversalAIEditPromptBuilder {
         screenContextMode: UniversalAIEditScreenContextPromptMode = .ocrText
     ) -> String {
         var parts: [String] = [
-            "<EDIT_MODE>\n\(mode.promptValue)\n</EDIT_MODE>",
             "<USER_INSTRUCTION>\n\(instruction)\n</USER_INSTRUCTION>"
         ]
 
-        if let userPreferences = UniversalAIEditUserPreferences.normalized(userPreferences) {
+        if let userPreferences = UniversalAIEditUserPreferences.modelBoundText(userPreferences) {
             parts.append("<user_preferences>\n\(userPreferences)\n</user_preferences>")
         }
 
-        if mode == .replaceSelection, let selectedText = normalized(context.selectedText) {
+        if mode == .replaceSelection, let selectedText = modelBoundText(context.selectedText) {
             parts.append("<SELECTED_TEXT>\n\(selectedText)\n</SELECTED_TEXT>")
         }
 
-        if screenContextMode == .ocrText, let screenText = normalized(context.screenText) {
+        if screenContextMode == .ocrText, let screenText = modelBoundText(context.screenText) {
             parts.append("<CURRENT_WINDOW_CONTEXT>\n\(screenText)\n</CURRENT_WINDOW_CONTEXT>")
         }
 
@@ -1071,20 +1069,19 @@ enum UniversalAIEditPromptBuilder {
             parts.append("<ATTACHED_SCREENSHOT_CONTEXT>\n\(screenshotContext.redactedMetadata)\n</ATTACHED_SCREENSHOT_CONTEXT>")
         }
 
-        if let clipboardText = normalized(context.clipboardText) {
+        if let clipboardText = modelBoundText(context.clipboardText) {
             parts.append("<CLIPBOARD_CONTEXT>\n\(clipboardText)\n</CLIPBOARD_CONTEXT>")
         }
 
-        if let customVocabulary = normalized(customVocabulary) {
+        if let customVocabulary = modelBoundText(customVocabulary) {
             parts.append("<CUSTOM_VOCABULARY>\n\(customVocabulary)\n</CUSTOM_VOCABULARY>")
         }
 
         return parts.joined(separator: "\n\n")
     }
 
-    private static func normalized(_ text: String?) -> String? {
+    private static func modelBoundText(_ text: String?) -> String? {
         guard let text else { return nil }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
     }
 }

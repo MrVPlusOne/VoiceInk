@@ -47,10 +47,6 @@ struct AIEditHistoryRecordTests {
             generationDuration: 1.2,
             target: target,
             aiRequestUserMessage: """
-            <EDIT_MODE>
-            insert_new
-            </EDIT_MODE>
-
             <CURRENT_WINDOW_CONTEXT>
             A Chrome tab is open.
             The page includes a quest detail.

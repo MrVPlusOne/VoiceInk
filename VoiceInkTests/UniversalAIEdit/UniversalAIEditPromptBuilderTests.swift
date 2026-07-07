@@ -27,7 +27,8 @@ struct UniversalAIEditPromptBuilderTests {
             customVocabulary: "VoiceInk"
         )
 
-        #expect(payload.contains("<EDIT_MODE>\nreplace_selection\n</EDIT_MODE>"))
+        #expect(!payload.contains("<EDIT_MODE>"))
+        #expect(!payload.contains("replace_selection"))
         #expect(payload.contains("<USER_INSTRUCTION>\nMake it shorter\n</USER_INSTRUCTION>"))
         #expect(payload.contains("<SELECTED_TEXT>\nOriginal draft\n</SELECTED_TEXT>"))
         #expect(payload.contains("<CURRENT_WINDOW_CONTEXT>"))
@@ -86,7 +87,8 @@ struct UniversalAIEditPromptBuilderTests {
             customVocabulary: nil
         )
 
-        #expect(payload.contains("<EDIT_MODE>\ninsert_new\n</EDIT_MODE>"))
+        #expect(!payload.contains("<EDIT_MODE>"))
+        #expect(!payload.contains("insert_new"))
         #expect(payload.contains("<USER_INSTRUCTION>\nDraft a reply\n</USER_INSTRUCTION>"))
         #expect(!payload.contains("<SELECTED_TEXT>"))
         #expect(payload.contains("<CURRENT_WINDOW_CONTEXT>"))
@@ -120,7 +122,7 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!payload.contains("<user_preferences>"))
     }
 
-    @Test func payloadIncludesTrimmedUserPreferencesForReplaceSelection() {
+    @Test func payloadPreservesExactIncludedUserTextForReplaceSelection() {
         let context = UniversalAIEditContext(
             capturedAt: Date(timeIntervalSince1970: 0),
             target: UniversalAIEditTargetSnapshot(
@@ -130,22 +132,34 @@ struct UniversalAIEditPromptBuilderTests {
                 focusedWindowTitle: "Reply",
                 focusedWindowFrame: nil
             ),
-            selectedText: "Please review.",
-            clipboardText: nil,
-            screenText: nil,
+            selectedText: "  Please review `this` John's draft.  ",
+            clipboardText: "  Clipboard keeps `quotes` and 'apostrophes'.  ",
+            screenText: "  Screen context keeps `punctuation`.  ",
             diagnostics: []
         )
+        let preferences = """
+
+        Generally, don't change `punctuation` to 'something else'.
+        Keep quote-like punctuation such as ‘this’ and that’s exact.
+        Do not change `、` to `,`.
+
+        """
 
         let payload = UniversalAIEditPromptBuilder.userPayload(
-            instruction: "Make it warmer",
+            instruction: "  Make John's `draft` warmer.  ",
             mode: .replaceSelection,
             context: context,
-            customVocabulary: nil,
-            userPreferences: "\nUse concise, friendly language.\n"
+            customVocabulary: "  Custom `term` stays exact.  ",
+            userPreferences: preferences
         )
 
-        #expect(payload.contains("<user_preferences>\nUse concise, friendly language.\n</user_preferences>"))
-        #expect(payload.contains("<SELECTED_TEXT>\nPlease review.\n</SELECTED_TEXT>"))
+        #expect(payload.contains("<USER_INSTRUCTION>\n  Make John's `draft` warmer.  \n</USER_INSTRUCTION>"))
+        #expect(payload.contains("<user_preferences>\n\(preferences)\n</user_preferences>"))
+        #expect(payload.contains("<SELECTED_TEXT>\n  Please review `this` John's draft.  \n</SELECTED_TEXT>"))
+        #expect(payload.contains("<CURRENT_WINDOW_CONTEXT>\n  Screen context keeps `punctuation`.  \n</CURRENT_WINDOW_CONTEXT>"))
+        #expect(payload.contains("<CLIPBOARD_CONTEXT>\n  Clipboard keeps `quotes` and 'apostrophes'.  \n</CLIPBOARD_CONTEXT>"))
+        #expect(payload.contains("<CUSTOM_VOCABULARY>\n  Custom `term` stays exact.  \n</CUSTOM_VOCABULARY>"))
+        #expect(!payload.contains("<EDIT_MODE>"))
     }
 
     @Test func payloadIncludesUserPreferencesForInsertNew() {

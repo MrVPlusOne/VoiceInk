@@ -72,8 +72,8 @@ final class UniversalAIEditContextCaptureService {
             selectedText: selectedText,
             editTargetSource: editTargetSource,
             focusedInput: focusedInput,
-            clipboardText: normalized(clipboardText),
-            screenText: normalized(screenText),
+            clipboardText: modelBoundText(clipboardText),
+            screenText: modelBoundText(screenText),
             screenshotContext: screenshotContext,
             diagnostics: diagnostics
         )
@@ -150,6 +150,11 @@ final class UniversalAIEditContextCaptureService {
         guard let text else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func modelBoundText(_ text: String?) -> String? {
+        guard let text else { return nil }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
     }
 
     private func copyAXElementAttribute(_ attribute: String, from element: AXUIElement) -> AXUIElement? {

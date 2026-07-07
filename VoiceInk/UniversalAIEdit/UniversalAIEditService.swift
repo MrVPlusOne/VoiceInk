@@ -16,8 +16,7 @@ final class UniversalAIEditService {
         enhancementService: AIEnhancementService,
         modelContext: ModelContext
     ) async throws -> UniversalAIEditResult {
-        let trimmedInstruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedInstruction.isEmpty else {
+        guard !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw UniversalAIEditError.emptyInstruction
         }
 
@@ -51,7 +50,7 @@ final class UniversalAIEditService {
             screenContextMode: screenContextMode
         )
         let userPayload = UniversalAIEditPromptBuilder.userPayload(
-            instruction: trimmedInstruction,
+            instruction: instruction,
             mode: mode,
             context: context,
             customVocabulary: customVocabulary,
@@ -82,7 +81,7 @@ final class UniversalAIEditService {
                     screenContextMode: .ocrText
                 )
                 let fallbackUserPayload = UniversalAIEditPromptBuilder.userPayload(
-                    instruction: trimmedInstruction,
+                    instruction: instruction,
                     mode: mode,
                     context: context,
                     customVocabulary: customVocabulary,
