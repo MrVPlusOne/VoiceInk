@@ -376,7 +376,26 @@ private extension NSEvent.ModifierFlags {
     static let shortcutRelevant: NSEvent.ModifierFlags = [.control, .option, .shift, .command, .function]
 
     var shortcutNormalized: NSEvent.ModifierFlags {
-        intersection(Self.shortcutRelevant)
+        var flags = intersection(Self.shortcutRelevant)
+        let raw = rawValue
+
+        if raw & UInt(NX_DEVICELCTLKEYMASK | NX_DEVICERCTLKEYMASK) != 0 {
+            flags.insert(.control)
+        }
+
+        if raw & UInt(NX_DEVICELALTKEYMASK | NX_DEVICERALTKEYMASK) != 0 {
+            flags.insert(.option)
+        }
+
+        if raw & UInt(NX_DEVICELSHIFTKEYMASK | NX_DEVICERSHIFTKEYMASK) != 0 {
+            flags.insert(.shift)
+        }
+
+        if raw & UInt(NX_DEVICELCMDKEYMASK | NX_DEVICERCMDKEYMASK) != 0 {
+            flags.insert(.command)
+        }
+
+        return flags
     }
 
     var shortcutDisplayTokens: [String] {
