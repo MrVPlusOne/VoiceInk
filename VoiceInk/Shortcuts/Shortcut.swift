@@ -409,7 +409,12 @@ struct ShortcutModifierCaptureState: Equatable {
         let modifiers = Shortcut.normalizedModifierFlags(modifierFlags, forKeyCode: keyCode)
 
         if !modifiers.isEmpty {
-            return previewShortcut(keyCode: keyCode, modifiers: modifiers)
+            var previewModifiers = modifiers
+            if let inferredModifiers = Shortcut.logicalModifierFlags(forModifierKeyCode: keyCode) {
+                previewModifiers.formUnion(inferredModifiers)
+            }
+
+            return previewShortcut(keyCode: keyCode, modifiers: previewModifiers)
         }
 
         if let pendingModifierShortcut {

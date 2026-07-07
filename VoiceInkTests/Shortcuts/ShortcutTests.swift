@@ -73,6 +73,24 @@ struct ShortcutTests {
         #expect(state.peakModifierFlags.isEmpty)
     }
 
+    @Test func rightCommandPartialFlagsAddMissingLogicalCommand() {
+        var state = ShortcutModifierCaptureState()
+
+        let preview = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightCommand),
+            modifierFlags: [.option]
+        )
+
+        guard case .preview(let previewShortcut) = preview else {
+            Issue.record("Expected partial-flags right Command to preview a shortcut")
+            return
+        }
+
+        #expect(previewShortcut.modifierFlags == [.option, .command])
+        #expect(previewShortcut.modifierFlags.contains(.command))
+        #expect(state.pendingModifierShortcut == previewShortcut)
+    }
+
     @Test func emptyFlagsModifierFallbackPreservesLeftRightIdentity() {
         var leftState = ShortcutModifierCaptureState()
         var rightState = ShortcutModifierCaptureState()
