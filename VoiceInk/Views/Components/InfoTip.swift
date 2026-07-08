@@ -69,6 +69,22 @@ extension InfoTip {
         self.learnMoreLink = nil
     }
 
+    /// Creates an InfoTip with custom icon styling
+    init(
+        _ message: String,
+        iconName: String,
+        iconSize: Image.Scale = .medium,
+        iconColor: Color = .primary,
+        width: CGFloat = 280
+    ) {
+        self.message = LocalizedStringKey(message)
+        self.learnMoreLink = nil
+        self.iconName = iconName
+        self.iconSize = iconSize
+        self.iconColor = iconColor
+        self.width = width
+    }
+
     /// Creates an InfoTip with a learn more link
     init(_ message: LocalizedStringKey, learnMoreURL: String) {
         self.message = message

@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var showLanguageRestartAlert = false
     @State private var hasCancelRecordingShortcut = ShortcutStore.shortcut(for: .cancelRecorder) != nil
     @State private var cancelRecordingShortcutRecorderResetID = 0
+    @State private var isAccessibilityTrusted = AXIsProcessTrusted()
 
     @State private var isMiddleClickExpanded = false
     @State private var isRestoreClipboardExpanded = false
@@ -31,6 +32,10 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
+                if !isAccessibilityTrusted {
+                    ShortcutAccessibilityWarning(onOpenSettings: Self.openAccessibilitySettings)
+                }
+
                 LabeledContent("Primary Shortcut") {
                     HStack(spacing: 8) {
                         Spacer()
@@ -305,6 +310,10 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .onAppear(perform: refreshAccessibilityTrust)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshAccessibilityTrust()
+        }
         .alert("Reset Onboarding", isPresented: $showResetOnboardingAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Reset", role: .destructive) {
@@ -322,10 +331,20 @@ struct SettingsView: View {
         }
     }
 
+    private func refreshAccessibilityTrust() {
+        isAccessibilityTrusted = AXIsProcessTrusted()
+    }
+
     private static let defaultCancelRecordingShortcut = Shortcut.key(
         keyCode: UInt16(kVK_Escape),
         modifierFlags: []
     )
+
+    private static func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 
     @ViewBuilder
     private func shortcutModePicker(binding: Binding<RecordingShortcutManager.Mode>) -> some View {
@@ -336,6 +355,43 @@ struct SettingsView: View {
         }
         .labelsHidden()
         .fixedSize()
+    }
+}
+
+private struct ShortcutAccessibilityWarning: View {
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(AppTheme.Status.warningStrong)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Text("Accessibility access is missing or stale")
+                        .font(.system(size: 12, weight: .semibold))
+                    InfoTip(
+                        "Shortcuts can still be recorded here, but they will not trigger until macOS trusts the current VoiceInk app.\n\nTo recover, open System Settings > Privacy & Security > Accessibility, remove old VoiceInk entries, add the exact /Applications/VoiceInk.app, enable it, then relaunch VoiceInk if shortcuts still do not fire.",
+                        iconName: "questionmark.circle",
+                        iconSize: .small,
+                        iconColor: AppTheme.Status.warningStrong,
+                        width: 340
+                    )
+                }
+
+                Text("Recorded shortcuts will not trigger until VoiceInk has Accessibility access for this app.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Open Settings", action: onOpenSettings)
+                .controlSize(.small)
+                .help("Open Accessibility settings")
+        }
+        .padding(.vertical, 4)
     }
 }
 
