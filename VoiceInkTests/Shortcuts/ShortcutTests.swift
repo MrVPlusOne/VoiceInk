@@ -127,4 +127,68 @@ struct ShortcutTests {
         #expect(state.pendingModifierShortcut == nil)
         #expect(state.peakModifierFlags.isEmpty)
     }
+
+    @Test func shortcutMonitorUpdatesShortcutMapWithoutReinstallingEventTap() {
+        var installCount = 0
+        let monitor = ShortcutMonitor(installEventTapHandler: { _ in
+            installCount += 1
+            return true
+        })
+
+        #expect(monitor.start(
+            shortcuts: [
+                .universalAIEdit: Shortcut.key(
+                    keyCode: UInt16(kVK_ANSI_V),
+                    modifierFlags: [.control, .option, .shift, .command]
+                )
+            ],
+            onKeyDown: { _, _ in },
+            onKeyUp: { _, _ in }
+        ))
+        #expect(installCount == 1)
+        #expect(monitor.monitoredShortcutActionsForTesting == [.universalAIEdit])
+
+        #expect(monitor.start(
+            shortcuts: [
+                .universalAIEdit: Shortcut.rightCommand,
+                .openHistoryWindow: Shortcut.key(
+                    keyCode: UInt16(kVK_ANSI_H),
+                    modifierFlags: [.option, .command]
+                )
+            ],
+            onKeyDown: { _, _ in },
+            onKeyUp: { _, _ in }
+        ))
+        #expect(installCount == 1)
+        #expect(monitor.monitoredShortcutActionsForTesting == [.universalAIEdit, .openHistoryWindow])
+    }
+
+    @Test func shortcutMonitorStopsWhenShortcutMapBecomesEmpty() {
+        var installCount = 0
+        let monitor = ShortcutMonitor(installEventTapHandler: { _ in
+            installCount += 1
+            return true
+        })
+
+        #expect(monitor.start(
+            shortcuts: [.universalAIEdit: Shortcut.rightCommand],
+            onKeyDown: { _, _ in },
+            onKeyUp: { _, _ in }
+        ))
+        #expect(installCount == 1)
+
+        #expect(monitor.start(
+            shortcuts: [:],
+            onKeyDown: { _, _ in },
+            onKeyUp: { _, _ in }
+        ))
+        #expect(monitor.monitoredShortcutActionsForTesting.isEmpty)
+
+        #expect(monitor.start(
+            shortcuts: [.universalAIEdit: Shortcut.rightCommand],
+            onKeyDown: { _, _ in },
+            onKeyUp: { _, _ in }
+        ))
+        #expect(installCount == 2)
+    }
 }

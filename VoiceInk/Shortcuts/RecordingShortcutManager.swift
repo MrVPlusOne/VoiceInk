@@ -47,8 +47,17 @@ class RecordingShortcutManager: ObservableObject {
     private let modeShortcutManager: ModeShortcutManager
     private let shortcutMonitor = ShortcutMonitor()
     private var shortcutChangeObserver: NSObjectProtocol?
+    private var shortcutMonitorRetryTask: Task<Void, Never>?
+    private var shortcutMonitorRetryAttempt = 0
     private let shortcutModeHandler: RecordingShortcutModeHandler
     private let primaryRecordingShortcutModeSource: RecordingShortcutModeSource
+
+    private static let shortcutMonitorRetryDelays: [UInt64] = [
+        100_000_000,
+        250_000_000,
+        500_000_000,
+        1_000_000_000
+    ]
 
     // MARK: - Helper Properties
     private var canHandleShortcutAction: Bool {
@@ -165,9 +174,13 @@ class RecordingShortcutManager: ObservableObject {
     }
     
     private func refreshShortcutMonitoring() {
-        removeAllMonitoring()
-        
+        shortcutMonitorRetryAttempt = 0
         refreshShortcutMonitor()
+        refreshMiddleClickMonitoring()
+    }
+
+    private func refreshMiddleClickMonitoring() {
+        removeMiddleClickMonitoring()
         setupMiddleClickMonitoring()
     }
     
@@ -221,7 +234,11 @@ class RecordingShortcutManager: ObservableObject {
             interruptibleRecordingActions.insert(.secondaryRecording)
         }
 
-        shortcutMonitor.start(
+        shortcutMonitorRetryTask?.cancel()
+        shortcutMonitorRetryTask = nil
+        shortcutModeHandler.reset()
+
+        let didStart = shortcutMonitor.start(
             shortcuts: shortcuts,
             interruptibleActions: interruptibleRecordingActions,
             onKeyDown: { [weak self] action, eventTime in
@@ -256,6 +273,32 @@ class RecordingShortcutManager: ObservableObject {
                 }
             }
         )
+
+        if didStart {
+            shortcutMonitorRetryAttempt = 0
+        } else {
+            scheduleShortcutMonitorRetry()
+        }
+    }
+
+    private func scheduleShortcutMonitorRetry() {
+        guard shortcutMonitorRetryAttempt < Self.shortcutMonitorRetryDelays.count else {
+            return
+        }
+
+        let delay = Self.shortcutMonitorRetryDelays[shortcutMonitorRetryAttempt]
+        shortcutMonitorRetryAttempt += 1
+        shortcutMonitorRetryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+
+            await MainActor.run {
+                self?.refreshShortcutMonitor()
+            }
+        }
     }
 
     private func recordingMode(for action: ShortcutAction) -> Mode? {
@@ -297,8 +340,15 @@ class RecordingShortcutManager: ObservableObject {
     }
 
     private func removeAllMonitoring() {
+        shortcutMonitorRetryTask?.cancel()
+        shortcutMonitorRetryTask = nil
+        shortcutMonitorRetryAttempt = 0
         shortcutMonitor.stop()
-        
+        removeMiddleClickMonitoring()
+        shortcutModeHandler.reset()
+    }
+
+    private func removeMiddleClickMonitoring() {
         for monitor in middleClickMonitors {
             if let monitor = monitor {
                 NSEvent.removeMonitor(monitor)
@@ -306,8 +356,7 @@ class RecordingShortcutManager: ObservableObject {
         }
         middleClickMonitors = []
         middleClickTask?.cancel()
-        
-        shortcutModeHandler.reset()
+        middleClickTask = nil
     }
     
     var isShortcutConfigured: Bool {

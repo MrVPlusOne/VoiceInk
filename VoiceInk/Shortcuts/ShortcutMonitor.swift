@@ -24,9 +24,19 @@ final class ShortcutMonitor {
     private var onShortcutInterrupted: ((ShortcutAction, TimeInterval) -> Void)?
     private var eventTap: CFMachPort?
     private var eventTapRunLoopSource: CFRunLoopSource?
+    private let installEventTapHandler: (ShortcutMonitor) -> Bool
+    private let usesInjectedEventTapInstaller: Bool
+    private var injectedEventTapInstalled = false
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "ShortcutMonitor")
 
     private static let shortcutInterruptionWindow: TimeInterval = 1.0
+
+    init(installEventTapHandler: ((ShortcutMonitor) -> Bool)? = nil) {
+        self.installEventTapHandler = installEventTapHandler ?? { monitor in
+            monitor.installEventTap()
+        }
+        self.usesInjectedEventTapInstaller = installEventTapHandler != nil
+    }
 
     deinit {
         stop()
@@ -40,25 +50,62 @@ final class ShortcutMonitor {
         onKeyUp: @escaping (ShortcutAction, TimeInterval) -> Void,
         onShortcutInterrupted: ((ShortcutAction, TimeInterval) -> Void)? = nil
     ) -> Bool {
-        stop()
-
-        for (action, shortcut) in shortcuts {
-            self.shortcuts[action] = ShortcutState(shortcut: shortcut)
-        }
-
-        guard !self.shortcuts.isEmpty else {
+        guard !shortcuts.isEmpty else {
+            stop()
             return true
         }
 
+        self.shortcuts = shortcuts.mapValues { ShortcutState(shortcut: $0) }
         self.interruptibleActions = interruptibleActions
         self.onKeyDown = onKeyDown
         self.onKeyUp = onKeyUp
         self.onShortcutInterrupted = onShortcutInterrupted
 
-        return installEventTap()
+        if hasActiveEventTap {
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return true
+        }
+
+        removeEventTap()
+        return installMonitoringEventTap()
     }
 
     func stop() {
+        removeEventTap()
+        shortcuts = [:]
+        interruptibleActions = []
+        onKeyDown = nil
+        onKeyUp = nil
+        onShortcutInterrupted = nil
+    }
+
+    var monitoredShortcutActionsForTesting: Set<ShortcutAction> {
+        Set(shortcuts.keys)
+    }
+
+    private var hasActiveEventTap: Bool {
+        if usesInjectedEventTapInstaller {
+            return injectedEventTapInstalled
+        }
+
+        guard let eventTap else {
+            return false
+        }
+
+        return CFMachPortIsValid(eventTap)
+    }
+
+    private func installMonitoringEventTap() -> Bool {
+        let didInstall = installEventTapHandler(self)
+        if usesInjectedEventTapInstaller {
+            injectedEventTapInstalled = didInstall
+        }
+        return didInstall
+    }
+
+    private func removeEventTap() {
         if let eventTapRunLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), eventTapRunLoopSource, .commonModes)
             self.eventTapRunLoopSource = nil
@@ -69,11 +116,7 @@ final class ShortcutMonitor {
             self.eventTap = nil
         }
 
-        shortcuts = [:]
-        interruptibleActions = []
-        onKeyDown = nil
-        onKeyUp = nil
-        onShortcutInterrupted = nil
+        injectedEventTapInstalled = false
     }
 
     private func installEventTap() -> Bool {
