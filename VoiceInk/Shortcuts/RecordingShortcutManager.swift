@@ -49,6 +49,7 @@ class RecordingShortcutManager: ObservableObject {
     private var shortcutChangeObserver: NSObjectProtocol?
     private var shortcutMonitorRetryTask: Task<Void, Never>?
     private var shortcutMonitorRetryAttempt = 0
+    private var shortcutMonitorAccessibilityRetryAttempt = 0
     private let shortcutModeHandler: RecordingShortcutModeHandler
     private let primaryRecordingShortcutModeSource: RecordingShortcutModeSource
 
@@ -58,6 +59,8 @@ class RecordingShortcutManager: ObservableObject {
         500_000_000,
         1_000_000_000
     ]
+    private static let shortcutMonitorAccessibilityRetryDelay: UInt64 = 1_000_000_000
+    private static let maxShortcutMonitorAccessibilityRetryAttempts = 120
 
     // MARK: - Helper Properties
     private var canHandleShortcutAction: Bool {
@@ -175,6 +178,7 @@ class RecordingShortcutManager: ObservableObject {
     
     private func refreshShortcutMonitoring() {
         shortcutMonitorRetryAttempt = 0
+        shortcutMonitorAccessibilityRetryAttempt = 0
         refreshShortcutMonitor()
         refreshMiddleClickMonitoring()
     }
@@ -276,6 +280,7 @@ class RecordingShortcutManager: ObservableObject {
 
         if didStart {
             shortcutMonitorRetryAttempt = 0
+            shortcutMonitorAccessibilityRetryAttempt = 0
         } else {
             scheduleShortcutMonitorRetry()
         }
@@ -283,6 +288,7 @@ class RecordingShortcutManager: ObservableObject {
 
     private func scheduleShortcutMonitorRetry() {
         guard shortcutMonitorRetryAttempt < Self.shortcutMonitorRetryDelays.count else {
+            scheduleShortcutMonitorAccessibilityRetryIfNeeded()
             return
         }
 
@@ -291,6 +297,26 @@ class RecordingShortcutManager: ObservableObject {
         shortcutMonitorRetryTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+
+            await MainActor.run {
+                self?.refreshShortcutMonitor()
+            }
+        }
+    }
+
+    private func scheduleShortcutMonitorAccessibilityRetryIfNeeded() {
+        guard !AXIsProcessTrusted(),
+              shortcutMonitorAccessibilityRetryAttempt < Self.maxShortcutMonitorAccessibilityRetryAttempts else {
+            return
+        }
+
+        shortcutMonitorAccessibilityRetryAttempt += 1
+        shortcutMonitorRetryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.shortcutMonitorAccessibilityRetryDelay)
             } catch {
                 return
             }
