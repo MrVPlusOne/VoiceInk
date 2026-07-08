@@ -45,9 +45,15 @@ final class UniversalAIEditService {
             modelName: modelName
         )
         let screenContextMode: UniversalAIEditScreenContextPromptMode = shouldUseScreenshot ? .screenshot : .ocrText
+        let contextPresence = UniversalAIEditPromptBuilder.contextPresence(
+            context: context,
+            customVocabulary: customVocabulary,
+            screenContextMode: screenContextMode
+        )
         let systemPrompt = UniversalAIEditPromptBuilder.systemPrompt(
             mode: mode,
-            screenContextMode: screenContextMode
+            screenContextMode: screenContextMode,
+            contextPresence: contextPresence
         )
         let userPayload = UniversalAIEditPromptBuilder.userPayload(
             instruction: instruction,
@@ -76,9 +82,15 @@ final class UniversalAIEditService {
                 requestSystemPrompt = systemPrompt
                 requestUserPayload = userPayload
             } catch {
+                let fallbackContextPresence = UniversalAIEditPromptBuilder.contextPresence(
+                    context: context,
+                    customVocabulary: customVocabulary,
+                    screenContextMode: .ocrText
+                )
                 let fallbackSystemPrompt = UniversalAIEditPromptBuilder.systemPrompt(
                     mode: mode,
-                    screenContextMode: .ocrText
+                    screenContextMode: .ocrText,
+                    contextPresence: fallbackContextPresence
                 )
                 let fallbackUserPayload = UniversalAIEditPromptBuilder.userPayload(
                     instruction: instruction,
