@@ -94,6 +94,19 @@ enum UniversalAIEditEditTargetSource: Equatable {
     case focusedInput
 }
 
+enum UniversalAIEditSelectedTextCaptureOutcome: Equatable {
+    case captured
+    case noSelection
+    case accessibilityMissing
+    case failed
+}
+
+enum UniversalAIEditFocusedInputSelectionState: Equatable {
+    case noSelection
+    case hasSelection
+    case unknown
+}
+
 struct UniversalAIEditFocusedInputSnapshot: Equatable {
     let text: String
     let role: String?
@@ -158,6 +171,20 @@ enum UniversalAIEditFlow {
         snapshot.isFullTextSelected ||
             normalizedIdentifier(snapshot.identifier) != nil ||
             snapshot.frame != nil
+    }
+
+    static func shouldUseFocusedInputFallback(
+        selectedTextOutcome: UniversalAIEditSelectedTextCaptureOutcome,
+        focusedInputSelectionState: UniversalAIEditFocusedInputSelectionState
+    ) -> Bool {
+        switch selectedTextOutcome {
+        case .noSelection:
+            return true
+        case .failed:
+            return focusedInputSelectionState == .noSelection
+        case .captured, .accessibilityMissing:
+            return false
+        }
     }
 
     static func shouldReplaceFocusedInputOnApply(

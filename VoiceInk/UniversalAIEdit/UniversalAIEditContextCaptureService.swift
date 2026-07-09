@@ -4,8 +4,15 @@ import Foundation
 
 @MainActor
 final class UniversalAIEditContextCaptureService {
+    private struct FocusedInputCandidate {
+        let element: AXUIElement
+        let snapshot: UniversalAIEditFocusedInputSnapshot
+        let selectionState: UniversalAIEditFocusedInputSelectionState
+    }
+
     func capture(configuration: EnhancementRuntimeConfiguration?) async -> UniversalAIEditContext {
         let target = targetSnapshot()
+        let focusedInputCandidate = focusedInputCandidate(for: target)
         async let selectedTextCapture = SelectedTextService.captureSelectedText()
         let clipboardText = configuration?.useClipboardContext == true
             ? NSPasteboard.general.string(forType: .string)
@@ -44,6 +51,7 @@ final class UniversalAIEditContextCaptureService {
         }
 
         let selectedTextResult = await selectedTextCapture
+        let selectedTextOutcome = selectedTextOutcome(from: selectedTextResult)
         var selectedText = selectedTextResult.text
         var editTargetSource: UniversalAIEditEditTargetSource?
         var focusedInput: UniversalAIEditFocusedInputSnapshot?
@@ -52,18 +60,28 @@ final class UniversalAIEditContextCaptureService {
         case .captured:
             editTargetSource = .explicitSelection
             break
-        case .noSelection:
-            if let fallbackInput = focusedInputSnapshot(for: target) {
+        case .noSelection, .failed:
+            if let focusedInputCandidate,
+               UniversalAIEditFlow.shouldUseFocusedInputFallback(
+                   selectedTextOutcome: selectedTextOutcome,
+                   focusedInputSelectionState: focusedInputCandidate.selectionState
+               ),
+               let fallbackInput = focusedInputSnapshot(from: focusedInputCandidate) {
                 selectedText = fallbackInput.text
                 focusedInput = fallbackInput
                 editTargetSource = .focusedInput
             } else {
-                diagnostics.append(.selectedTextUnavailable)
+                switch selectedTextResult {
+                case .noSelection:
+                    diagnostics.append(.selectedTextUnavailable)
+                case .failed:
+                    diagnostics.append(.selectedTextCaptureFailed)
+                case .captured, .accessibilityMissing:
+                    break
+                }
             }
         case .accessibilityMissing:
             diagnostics.append(.accessibilityPermissionMissing)
-        case .failed:
-            diagnostics.append(.selectedTextCaptureFailed)
         }
 
         return UniversalAIEditContext(
@@ -79,7 +97,22 @@ final class UniversalAIEditContextCaptureService {
         )
     }
 
-    private func focusedInputSnapshot(for target: UniversalAIEditTargetSnapshot) -> UniversalAIEditFocusedInputSnapshot? {
+    private func selectedTextOutcome(
+        from result: SelectedTextService.CaptureResult
+    ) -> UniversalAIEditSelectedTextCaptureOutcome {
+        switch result {
+        case .captured:
+            return .captured
+        case .noSelection:
+            return .noSelection
+        case .accessibilityMissing:
+            return .accessibilityMissing
+        case .failed:
+            return .failed
+        }
+    }
+
+    private func focusedInputCandidate(for target: UniversalAIEditTargetSnapshot) -> FocusedInputCandidate? {
         guard let processIdentifier = target.processIdentifier,
               AXIsProcessTrusted() else {
             return nil
@@ -101,7 +134,23 @@ final class UniversalAIEditContextCaptureService {
             role: role,
             identifier: normalized(copyStringAttribute(kAXIdentifierAttribute, from: focusedElement)),
             frame: elementFrame(focusedElement),
-            isFullTextSelected: selectAllText(in: focusedElement, text: text)
+            isFullTextSelected: false
+        )
+
+        return FocusedInputCandidate(
+            element: focusedElement,
+            snapshot: focusedInput,
+            selectionState: focusedInputSelectionState(in: focusedElement)
+        )
+    }
+
+    private func focusedInputSnapshot(from candidate: FocusedInputCandidate) -> UniversalAIEditFocusedInputSnapshot? {
+        let focusedInput = UniversalAIEditFocusedInputSnapshot(
+            text: candidate.snapshot.text,
+            role: candidate.snapshot.role,
+            identifier: candidate.snapshot.identifier,
+            frame: candidate.snapshot.frame,
+            isFullTextSelected: selectAllText(in: candidate.element, text: candidate.snapshot.text)
         )
         guard UniversalAIEditFlow.canUseFocusedInputEditTarget(focusedInput) else {
             return nil
@@ -181,6 +230,20 @@ final class UniversalAIEditContextCaptureService {
         }
 
         return value as? String
+    }
+
+    private func focusedInputSelectionState(in element: AXUIElement) -> UniversalAIEditFocusedInputSelectionState {
+        if let selectedRange = copyCFRangeAttribute(kAXSelectedTextRangeAttribute, from: element) {
+            return selectedRange.length > 0 ? .hasSelection : .noSelection
+        }
+
+        if let selectedText = copyStringAttribute(kAXSelectedTextAttribute, from: element) {
+            return selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? .noSelection
+                : .hasSelection
+        }
+
+        return .unknown
     }
 
     private func selectAllText(in element: AXUIElement, text: String) -> Bool {

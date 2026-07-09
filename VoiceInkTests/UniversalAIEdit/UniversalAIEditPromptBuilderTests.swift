@@ -641,6 +641,37 @@ struct UniversalAIEditPromptBuilderTests {
         ))
     }
 
+    @Test func focusedInputFallbackOnlyRunsWhenSelectionIsSafelyRuledOut() {
+        #expect(UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .noSelection,
+            focusedInputSelectionState: .unknown
+        ))
+        #expect(UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .noSelection,
+            focusedInputSelectionState: .noSelection
+        ))
+        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .captured,
+            focusedInputSelectionState: .noSelection
+        ))
+        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .accessibilityMissing,
+            focusedInputSelectionState: .noSelection
+        ))
+        #expect(UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .failed,
+            focusedInputSelectionState: .noSelection
+        ))
+        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .failed,
+            focusedInputSelectionState: .hasSelection
+        ))
+        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .failed,
+            focusedInputSelectionState: .unknown
+        ))
+    }
+
     @Test func focusedInputReplacementRequiresFreshFocusedInputEditSnapshot() {
         let context = UniversalAIEditContext(
             capturedAt: Date(timeIntervalSince1970: 0),
