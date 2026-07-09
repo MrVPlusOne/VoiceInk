@@ -96,12 +96,18 @@ final class UniversalAIEditContextCaptureService {
             return nil
         }
 
-        return UniversalAIEditFocusedInputSnapshot(
+        let focusedInput = UniversalAIEditFocusedInputSnapshot(
             text: text,
             role: role,
             identifier: normalized(copyStringAttribute(kAXIdentifierAttribute, from: focusedElement)),
-            frame: elementFrame(focusedElement)
+            frame: elementFrame(focusedElement),
+            isFullTextSelected: selectAllText(in: focusedElement, text: text)
         )
+        guard UniversalAIEditFlow.canUseFocusedInputEditTarget(focusedInput) else {
+            return nil
+        }
+
+        return focusedInput
     }
 
     private static func shouldUseScreenshotContext(configuration: EnhancementRuntimeConfiguration?) -> Bool {
@@ -177,6 +183,34 @@ final class UniversalAIEditContextCaptureService {
         return value as? String
     }
 
+    private func selectAllText(in element: AXUIElement, text: String) -> Bool {
+        let fullLength = (text as NSString).length
+        guard fullLength > 0 else { return false }
+
+        var range = CFRange(location: 0, length: fullLength)
+        guard let rangeValue = AXValueCreate(.cfRange, &range),
+              AXUIElementSetAttributeValue(
+                  element,
+                  kAXSelectedTextRangeAttribute as CFString,
+                  rangeValue
+              ) == .success else {
+            return false
+        }
+
+        return isFullTextSelected(in: element, text: text)
+    }
+
+    private func isFullTextSelected(in element: AXUIElement, text: String) -> Bool {
+        let fullLength = (text as NSString).length
+        if let selectedRange = copyCFRangeAttribute(kAXSelectedTextRangeAttribute, from: element),
+           selectedRange.location == 0,
+           selectedRange.length == fullLength {
+            return true
+        }
+
+        return copyStringAttribute(kAXSelectedTextAttribute, from: element) == text
+    }
+
     private func copyCGPointAttribute(_ attribute: String, from element: AXUIElement) -> CGPoint? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
@@ -214,5 +248,21 @@ final class UniversalAIEditContextCaptureService {
         }
 
         return CGRect(origin: position, size: size)
+    }
+
+    private func copyCFRangeAttribute(_ attribute: String, from element: AXUIElement) -> CFRange? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+
+        var range = CFRange()
+        guard AXValueGetValue((value as! AXValue), .cfRange, &range) else {
+            return nil
+        }
+
+        return range
     }
 }

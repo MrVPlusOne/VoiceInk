@@ -599,7 +599,8 @@ struct UniversalAIEditPromptBuilderTests {
             editTargetSource: .focusedInput,
             focusedInput: UniversalAIEditFocusedInputSnapshot(
                 text: "Full input text",
-                role: kAXTextAreaRole as String
+                role: kAXTextAreaRole as String,
+                isFullTextSelected: true
             ),
             clipboardText: nil,
             screenText: nil,
@@ -608,6 +609,36 @@ struct UniversalAIEditPromptBuilderTests {
 
         #expect(context.mode == .replaceSelection)
         #expect(context.editTargetSource == .focusedInput)
+    }
+
+    @Test func focusedInputEditTargetRequiresSelectionOrStableIdentity() {
+        #expect(UniversalAIEditFlow.canUseFocusedInputEditTarget(
+            UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String,
+                isFullTextSelected: true
+            )
+        ))
+        #expect(UniversalAIEditFlow.canUseFocusedInputEditTarget(
+            UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String,
+                identifier: "title"
+            )
+        ))
+        #expect(UniversalAIEditFlow.canUseFocusedInputEditTarget(
+            UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String,
+                frame: CGRect(x: 20, y: 30, width: 240, height: 28)
+            )
+        ))
+        #expect(!UniversalAIEditFlow.canUseFocusedInputEditTarget(
+            UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String
+            )
+        ))
     }
 
     @Test func focusedInputReplacementRequiresFreshFocusedInputEditSnapshot() {
@@ -662,7 +693,8 @@ struct UniversalAIEditPromptBuilderTests {
             text: "Full input text",
             role: kAXTextFieldRole as String,
             identifier: "title",
-            frame: CGRect(x: 20, y: 30, width: 240, height: 28)
+            frame: CGRect(x: 20, y: 30, width: 240, height: 28),
+            isFullTextSelected: true
         )
 
         #expect(UniversalAIEditFlow.focusedInputIdentityMatches(
@@ -671,7 +703,18 @@ struct UniversalAIEditPromptBuilderTests {
                 text: "Full input text",
                 role: kAXTextFieldRole as String,
                 identifier: "title",
-                frame: CGRect(x: 22, y: 31, width: 240, height: 28)
+                frame: CGRect(x: 22, y: 31, width: 240, height: 28),
+                isFullTextSelected: true
+            )
+        ))
+        #expect(!UniversalAIEditFlow.focusedInputIdentityMatches(
+            captured: captured,
+            current: UniversalAIEditFocusedInputSnapshot(
+                text: "Full input text",
+                role: kAXTextFieldRole as String,
+                identifier: "title",
+                frame: CGRect(x: 22, y: 31, width: 240, height: 28),
+                isFullTextSelected: false
             )
         ))
         #expect(!UniversalAIEditFlow.focusedInputIdentityMatches(
@@ -680,7 +723,8 @@ struct UniversalAIEditPromptBuilderTests {
                 text: "Full input text",
                 role: kAXTextFieldRole as String,
                 identifier: "other-title",
-                frame: CGRect(x: 22, y: 31, width: 240, height: 28)
+                frame: CGRect(x: 22, y: 31, width: 240, height: 28),
+                isFullTextSelected: true
             )
         ))
         #expect(!UniversalAIEditFlow.focusedInputIdentityMatches(
@@ -689,7 +733,8 @@ struct UniversalAIEditPromptBuilderTests {
                 text: "Full input text",
                 role: kAXTextFieldRole as String,
                 identifier: "title",
-                frame: CGRect(x: 20, y: 80, width: 240, height: 28)
+                frame: CGRect(x: 20, y: 80, width: 240, height: 28),
+                isFullTextSelected: true
             )
         ))
         #expect(!UniversalAIEditFlow.focusedInputIdentityMatches(
@@ -698,7 +743,8 @@ struct UniversalAIEditPromptBuilderTests {
                 text: "Different text",
                 role: kAXTextFieldRole as String,
                 identifier: "title",
-                frame: CGRect(x: 20, y: 30, width: 240, height: 28)
+                frame: CGRect(x: 20, y: 30, width: 240, height: 28),
+                isFullTextSelected: true
             )
         ))
     }

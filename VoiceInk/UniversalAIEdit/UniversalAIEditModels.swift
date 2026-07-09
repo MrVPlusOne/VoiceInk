@@ -99,17 +99,20 @@ struct UniversalAIEditFocusedInputSnapshot: Equatable {
     let role: String?
     let identifier: String?
     let frame: CGRect?
+    let isFullTextSelected: Bool
 
     init(
         text: String,
         role: String?,
         identifier: String? = nil,
-        frame: CGRect? = nil
+        frame: CGRect? = nil,
+        isFullTextSelected: Bool = false
     ) {
         self.text = text
         self.role = role
         self.identifier = identifier
         self.frame = frame
+        self.isFullTextSelected = isFullTextSelected
     }
 }
 
@@ -151,6 +154,12 @@ enum UniversalAIEditFlow {
         return supportedFocusedInputRoles.contains(role)
     }
 
+    static func canUseFocusedInputEditTarget(_ snapshot: UniversalAIEditFocusedInputSnapshot) -> Bool {
+        snapshot.isFullTextSelected ||
+            normalizedIdentifier(snapshot.identifier) != nil ||
+            snapshot.frame != nil
+    }
+
     static func shouldReplaceFocusedInputOnApply(
         generatedInputSnapshot: UniversalAIEditInputSnapshot?,
         currentInputSnapshot: UniversalAIEditInputSnapshot?
@@ -177,6 +186,12 @@ enum UniversalAIEditFlow {
 
         if let capturedIdentifier = normalizedIdentifier(captured.identifier) {
             guard normalizedIdentifier(current.identifier) == capturedIdentifier else {
+                return false
+            }
+        }
+
+        if captured.isFullTextSelected {
+            guard current.isFullTextSelected else {
                 return false
             }
         }

@@ -862,7 +862,8 @@ final class UniversalAIEditManager: ObservableObject {
             text: currentText,
             role: role,
             identifier: normalized(copyStringAttribute(kAXIdentifierAttribute, from: focusedElement)),
-            frame: elementFrame(focusedElement)
+            frame: elementFrame(focusedElement),
+            isFullTextSelected: isFullTextSelected(in: focusedElement, text: currentText)
         )
         guard UniversalAIEditFlow.focusedInputIdentityMatches(
             captured: focusedInput,
@@ -911,6 +912,17 @@ final class UniversalAIEditManager: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private func isFullTextSelected(in element: AXUIElement, text: String) -> Bool {
+        let fullLength = (text as NSString).length
+        if let selectedRange = copyCFRangeAttribute(kAXSelectedTextRangeAttribute, from: element),
+           selectedRange.location == 0,
+           selectedRange.length == fullLength {
+            return true
+        }
+
+        return copyStringAttribute(kAXSelectedTextAttribute, from: element) == text
+    }
+
     private func copyCGPointAttribute(_ attribute: String, from element: AXUIElement) -> CGPoint? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
@@ -948,6 +960,22 @@ final class UniversalAIEditManager: ObservableObject {
         }
 
         return CGRect(origin: position, size: size)
+    }
+
+    private func copyCFRangeAttribute(_ attribute: String, from element: AXUIElement) -> CFRange? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+
+        var range = CFRange()
+        guard AXValueGetValue((value as! AXValue), .cfRange, &range) else {
+            return nil
+        }
+
+        return range
     }
 
     private static func openAccessibilitySettings() {
