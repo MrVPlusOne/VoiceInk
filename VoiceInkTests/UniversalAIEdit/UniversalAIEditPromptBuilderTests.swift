@@ -651,6 +651,10 @@ struct UniversalAIEditPromptBuilderTests {
             focusedInputSelectionState: .noSelection
         ))
         #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
+            selectedTextOutcome: .noSelection,
+            focusedInputSelectionState: .hasSelection
+        ))
+        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
             selectedTextOutcome: .captured,
             focusedInputSelectionState: .noSelection
         ))

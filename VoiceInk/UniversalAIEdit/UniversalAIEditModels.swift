@@ -179,7 +179,7 @@ enum UniversalAIEditFlow {
     ) -> Bool {
         switch selectedTextOutcome {
         case .noSelection:
-            return true
+            return focusedInputSelectionState != .hasSelection
         case .failed:
             return focusedInputSelectionState == .noSelection
         case .captured, .accessibilityMissing:
