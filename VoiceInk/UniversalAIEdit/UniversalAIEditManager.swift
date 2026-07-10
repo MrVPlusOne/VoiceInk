@@ -656,7 +656,10 @@ final class UniversalAIEditManager: ObservableObject {
                 model: transcriptionConfiguration.model,
                 context: requestContext
             )
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = UniversalAIEditInstructionTranscriptionProcessor.process(
+                text,
+                modelContext: engine.modelContext
+            )
             if !trimmed.isEmpty {
                 if instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     instruction = trimmed

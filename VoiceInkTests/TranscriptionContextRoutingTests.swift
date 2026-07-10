@@ -81,6 +81,56 @@ struct TranscriptionContextRoutingTests {
         #expect(context?.contains("<CLIPBOARD_CONTEXT>") == false)
     }
 
+    @Test func aiEditInstructionContextUsesEnhancementSourceGates() {
+        let model = customModel(supportsContext: true)
+        TranscriptionContextModelSettings.setSendContextEnabled(true, for: model)
+        defer { TranscriptionContextModelSettings.setSendContextEnabled(false, for: model) }
+
+        let enhancementConfiguration = EnhancementRuntimeConfiguration(
+            mode: nil,
+            isEnabled: false,
+            prompt: nil,
+            provider: nil,
+            modelName: nil,
+            useClipboardContext: false,
+            useSelectedTextContext: true,
+            useScreenCaptureContext: true
+        )
+        let config = runtimeConfiguration(model: model)
+        let context = config.requestContext(
+            recordingContextSnapshot: contextSnapshot(),
+            sourceSettings: .enhancement(enhancementConfiguration)
+        )
+
+        #expect(context.recognitionContext?.contains("<SELECTED_TEXT_CONTEXT>\nSelected term\n</SELECTED_TEXT_CONTEXT>") == true)
+        #expect(context.recognitionContext?.contains("<CURRENT_WINDOW_CONTEXT>\nWindow term\n</CURRENT_WINDOW_CONTEXT>") == true)
+        #expect(context.recognitionContext?.contains("<CLIPBOARD_CONTEXT>") == false)
+    }
+
+    @Test func aiEditInstructionContextStaysNilWhenModelOptInIsOff() {
+        let model = customModel(supportsContext: true)
+        TranscriptionContextModelSettings.setSendContextEnabled(false, for: model)
+
+        let enhancementConfiguration = EnhancementRuntimeConfiguration(
+            mode: nil,
+            isEnabled: false,
+            prompt: nil,
+            provider: nil,
+            modelName: nil,
+            useClipboardContext: true,
+            useSelectedTextContext: true,
+            useScreenCaptureContext: true
+        )
+        let config = runtimeConfiguration(model: model)
+        let context = config.requestContext(
+            recordingContextSnapshot: contextSnapshot(),
+            sourceSettings: .enhancement(enhancementConfiguration)
+        )
+
+        #expect(context.recognitionContext == nil)
+        #expect(context.promptWithRecognitionContext?.contains("<CURRENT_WINDOW_CONTEXT>") == false)
+    }
+
     @Test func knownOpenAITranscriptionContextModelsAreRecognizedByName() {
         #expect(TranscriptionContextModelSettings.isKnownOpenAITranscriptionContextModel("gpt-4o-mini-transcribe"))
         #expect(TranscriptionContextModelSettings.isKnownOpenAITranscriptionContextModel(" GPT-4O-TRANSCRIBE "))
