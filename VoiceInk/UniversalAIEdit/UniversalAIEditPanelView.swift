@@ -17,6 +17,7 @@ struct UniversalAIEditPanelView: View {
     @State private var contextDetailsExpanded = false
     @State private var previewMode: UniversalAIEditPreviewMode = .diff
     @State private var isScreenContextInspectorPresented = false
+    @State private var promptTemplateEditor: PromptTemplateEditorPresentation?
     @State private var recordingPulse = false
 
     var body: some View {
@@ -78,6 +79,17 @@ struct UniversalAIEditPanelView: View {
                     subtitle: screenContextInspectorSubtitle
                 )
             }
+        }
+        .sheet(item: $promptTemplateEditor) { presentation in
+            UniversalAIEditPromptTemplateEditorSheet(
+                template: presentation.template,
+                onSave: { id, label, content in
+                    manager.savePromptTemplate(id: id, label: label, content: content)
+                },
+                onDelete: { template in
+                    manager.deletePromptTemplate(template)
+                }
+            )
         }
     }
 
@@ -371,6 +383,7 @@ struct UniversalAIEditPanelView: View {
     private var composerArea: some View {
         VStack(alignment: .leading, spacing: 8) {
             composerHeaderRow
+            promptTemplateRow
 
             HStack(alignment: .bottom, spacing: 10) {
                 instructionTextEditor
@@ -414,10 +427,62 @@ struct UniversalAIEditPanelView: View {
         .frame(minHeight: 24)
     }
 
+    private var promptTemplateRow: some View {
+        HStack(spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(Array(manager.promptTemplates.enumerated()), id: \.element.id) { index, template in
+                        UniversalAIEditPromptTemplateButton(
+                            template: template,
+                            shortcutNumber: UniversalAIEditPromptTemplateShortcut.number(forButtonIndex: index),
+                            onClick: {
+                                manager.activatePromptTemplate(template)
+                            },
+                            onDoubleClick: {
+                                manager.activatePromptTemplate(template, runAfterInsert: true)
+                            }
+                        )
+                        .frame(height: 24)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .contextMenu {
+                            Button("Edit") {
+                                promptTemplateEditor = PromptTemplateEditorPresentation(template: template)
+                            }
+                            Button("Delete", role: .destructive) {
+                                manager.deletePromptTemplate(template)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                promptTemplateEditor = PromptTemplateEditorPresentation(template: nil)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .background(
+                Circle()
+                    .fill(AppTheme.Surface.controlActive.opacity(0.55))
+            )
+            .overlay(
+                Circle()
+                    .stroke(AppTheme.Border.control.opacity(0.55), lineWidth: 1)
+            )
+            .help("New prompt template")
+        }
+        .frame(minHeight: 26)
+    }
+
     private var instructionTextEditor: some View {
         TextEditor(text: $manager.instruction)
             .font(.system(size: 14))
-            .modelBoundTextInput()
+            .modelBoundTextInput { textView in
+                manager.registerInstructionTextView(textView)
+            }
             .focused($instructionFocused)
             .scrollContentBackground(.hidden)
             .padding(.horizontal, 8)
@@ -767,6 +832,168 @@ struct UniversalAIEditPanelView: View {
         .disabled(!manager.canToggleVoiceInstruction)
         .help(manager.isVoiceRecording ? "Stop recording" : "Record instruction")
         .accessibilityLabel(manager.isVoiceRecording ? "Stop recording" : "Record instruction")
+    }
+}
+
+private struct PromptTemplateEditorPresentation: Identifiable {
+    let id = UUID()
+    let template: UniversalAIEditPromptTemplate?
+}
+
+private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
+    let template: UniversalAIEditPromptTemplate
+    let shortcutNumber: Int?
+    let onClick: () -> Void
+    let onDoubleClick: () -> Void
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(title: template.label, target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11, weight: .medium)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        configure(button)
+        return button
+    }
+
+    func updateNSView(_ nsView: NSButton, context: Context) {
+        context.coordinator.onClick = onClick
+        context.coordinator.onDoubleClick = onDoubleClick
+        nsView.title = template.label
+        configure(nsView)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onClick: onClick, onDoubleClick: onDoubleClick)
+    }
+
+    private func configure(_ button: NSButton) {
+        button.toolTip = tooltip
+        button.sendAction(on: [.leftMouseUp])
+    }
+
+    private var tooltip: String {
+        if let shortcutNumber {
+            return String(format: String(localized: "Command+%lld inserts %@"), Int64(shortcutNumber == 10 ? 0 : shortcutNumber), template.label)
+        }
+        return template.label
+    }
+
+    final class Coordinator: NSObject {
+        var onClick: () -> Void
+        var onDoubleClick: () -> Void
+        private var pendingSingleClick: DispatchWorkItem?
+
+        init(onClick: @escaping () -> Void, onDoubleClick: @escaping () -> Void) {
+            self.onClick = onClick
+            self.onDoubleClick = onDoubleClick
+        }
+
+        @objc func handleClick(_ sender: NSButton) {
+            let clickCount = NSApp.currentEvent?.clickCount ?? 1
+            if clickCount >= 2 {
+                pendingSingleClick?.cancel()
+                pendingSingleClick = nil
+                onDoubleClick()
+                return
+            }
+
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.onClick()
+                self?.pendingSingleClick = nil
+            }
+            pendingSingleClick = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: workItem)
+        }
+    }
+}
+
+private struct UniversalAIEditPromptTemplateEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let template: UniversalAIEditPromptTemplate?
+    let onSave: (UUID?, String, String) -> Void
+    let onDelete: (UniversalAIEditPromptTemplate) -> Void
+
+    @State private var label: String
+    @State private var content: String
+
+    init(
+        template: UniversalAIEditPromptTemplate?,
+        onSave: @escaping (UUID?, String, String) -> Void,
+        onDelete: @escaping (UniversalAIEditPromptTemplate) -> Void
+    ) {
+        self.template = template
+        self.onSave = onSave
+        self.onDelete = onDelete
+        _label = State(initialValue: template?.label ?? "")
+        _content = State(initialValue: template?.content ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(template == nil ? "New Template" : "Edit Template")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(AppTheme.Text.primary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Label")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Text.secondary)
+                TextField("Polish", text: $label)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Content")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Text.secondary)
+                TextEditor(text: $content)
+                    .font(.system(size: 13))
+                    .modelBoundTextInput()
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 130)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(AppTheme.Surface.window)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(AppTheme.Border.control.opacity(0.55), lineWidth: 1)
+                    )
+            }
+
+            HStack {
+                if let template {
+                    Button("Delete", role: .destructive) {
+                        onDelete(template)
+                        dismiss()
+                    }
+                }
+
+                Spacer()
+
+                Button("Cancel") {
+                    dismiss()
+                }
+
+                Button("Save") {
+                    onSave(template?.id, label, content)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canSave)
+            }
+        }
+        .padding(18)
+        .frame(width: 430)
+    }
+
+    private var canSave: Bool {
+        !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

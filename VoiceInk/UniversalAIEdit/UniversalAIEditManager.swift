@@ -18,6 +18,7 @@ final class UniversalAIEditManager: ObservableObject {
     @Published private(set) var voiceMeterSamples: [Double] = []
     @Published private(set) var shouldFocusInstructionOnAppear = true
     @Published private(set) var instructionFocusRequest = 0
+    @Published private(set) var promptTemplates: [UniversalAIEditPromptTemplate] = UniversalAIEditPromptTemplateStore.load()
 
     private let contextCaptureService = UniversalAIEditContextCaptureService()
     private let editService = UniversalAIEditService()
@@ -32,6 +33,7 @@ final class UniversalAIEditManager: ObservableObject {
     private var generatedInputSnapshot: UniversalAIEditInputSnapshot?
     private var panelSessionID: UUID?
     private var activeGenerationID: UUID?
+    private weak var instructionTextView: NSTextView?
 
     private init() {}
 
@@ -257,6 +259,61 @@ final class UniversalAIEditManager: ObservableObject {
     func setMode(_ requestedMode: UniversalAIEditMode) {
         guard canSelectMode(requestedMode) else { return }
         mode = requestedMode
+    }
+
+    func registerInstructionTextView(_ textView: NSTextView) {
+        instructionTextView = textView
+    }
+
+    func savePromptTemplate(id: UUID?, label: String, content: String) {
+        let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedLabel.isEmpty,
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        let now = Date()
+        var updatedTemplates = promptTemplates
+        if let id,
+           let index = updatedTemplates.firstIndex(where: { $0.id == id }) {
+            updatedTemplates[index].label = normalizedLabel
+            updatedTemplates[index].content = content
+            updatedTemplates[index].updatedAt = now
+        } else {
+            updatedTemplates.append(
+                UniversalAIEditPromptTemplate(
+                    label: normalizedLabel,
+                    content: content,
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+        }
+
+        promptTemplates = updatedTemplates
+        UniversalAIEditPromptTemplateStore.save(promptTemplates)
+    }
+
+    func deletePromptTemplate(_ template: UniversalAIEditPromptTemplate) {
+        promptTemplates.removeAll { $0.id == template.id }
+        UniversalAIEditPromptTemplateStore.save(promptTemplates)
+    }
+
+    @discardableResult
+    func activatePromptTemplate(_ template: UniversalAIEditPromptTemplate, runAfterInsert: Bool = false) -> Bool {
+        guard promptTemplates.contains(where: { $0.id == template.id }) else { return false }
+        insertPromptTemplateContent(template.content, runAfterInsert: runAfterInsert)
+        return true
+    }
+
+    @discardableResult
+    func activatePromptTemplateShortcut(number: Int) -> Bool {
+        guard number >= 1,
+              number <= promptTemplates.count else {
+            return false
+        }
+
+        return activatePromptTemplate(promptTemplates[number - 1], runAfterInsert: false)
     }
 
     func updatePanelSize(showingPreview: Bool) {
@@ -517,6 +574,36 @@ final class UniversalAIEditManager: ObservableObject {
             }
         case .preview:
             performPrimaryAction()
+        }
+    }
+
+    private func insertPromptTemplateContent(_ content: String, runAfterInsert: Bool) {
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        let selectedRange = instructionTextView?.selectedRange()
+        let result = UniversalAIEditPromptTemplateInsertion.insert(
+            content,
+            into: instruction,
+            selectedRange: selectedRange
+        )
+        instruction = result.text
+        requestInstructionFocus()
+
+        DispatchQueue.main.async { [weak self] in
+            guard let textView = self?.instructionTextView else { return }
+            let location = min(result.caretLocation, (textView.string as NSString).length)
+            textView.setSelectedRange(NSRange(location: location, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: location, length: 0))
+        }
+
+        guard runAfterInsert else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.canGenerate else {
+                return
+            }
+            self.generate()
         }
     }
 
@@ -1029,6 +1116,11 @@ final class UniversalAIEditPanel: NSPanel {
         }
 
         if event.type == .keyDown,
+           handlePromptTemplateShortcut(event) {
+            return
+        }
+
+        if event.type == .keyDown,
            event.keyCode == 48,
            event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
             manager?.handleTabKey()
@@ -1041,11 +1133,23 @@ final class UniversalAIEditPanel: NSPanel {
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
             manager?.handleEscapeKey()
+        } else if handlePromptTemplateShortcut(event) {
+            return
         } else if event.keyCode == 48,
                   event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
             manager?.handleTabKey()
         } else {
             super.keyDown(with: event)
         }
+    }
+
+    private func handlePromptTemplateShortcut(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        guard modifiers == .command,
+              let number = UniversalAIEditPromptTemplateShortcut.number(forKeyCode: event.keyCode) else {
+            return false
+        }
+
+        return manager?.activatePromptTemplateShortcut(number: number) ?? false
     }
 }

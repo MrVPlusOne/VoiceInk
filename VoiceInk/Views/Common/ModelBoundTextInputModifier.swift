@@ -2,14 +2,16 @@ import AppKit
 import SwiftUI
 
 extension View {
-    func modelBoundTextInput() -> some View {
+    func modelBoundTextInput(onTextViewResolved: ((NSTextView) -> Void)? = nil) -> some View {
         self
             .autocorrectionDisabled(true)
-            .background(ModelBoundTextInputConfigurator())
+            .background(ModelBoundTextInputConfigurator(onTextViewResolved: onTextViewResolved))
     }
 }
 
 private struct ModelBoundTextInputConfigurator: NSViewRepresentable {
+    let onTextViewResolved: ((NSTextView) -> Void)?
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         scheduleConfiguration(from: view)
@@ -34,6 +36,7 @@ private struct ModelBoundTextInputConfigurator: NSViewRepresentable {
             textView.isAutomaticSpellingCorrectionEnabled = false
             textView.isContinuousSpellCheckingEnabled = false
             textView.isGrammarCheckingEnabled = false
+            onTextViewResolved?(textView)
         }
     }
 
