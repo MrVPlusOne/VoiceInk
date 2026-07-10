@@ -572,7 +572,7 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: true))
     }
 
-    @Test func focusedInputFallbackCanBecomeEditTarget() {
+    @Test func focusedInputSnapshotsStillSupportApplySafety() {
         #expect(UniversalAIEditFlow.normalizedFocusedInputText(
             role: kAXTextFieldRole as String,
             value: " Existing text "
@@ -611,68 +611,61 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(context.editTargetSource == .focusedInput)
     }
 
-    @Test func focusedInputEditTargetRequiresSelectionOrStableIdentity() {
-        #expect(UniversalAIEditFlow.canUseFocusedInputEditTarget(
-            UniversalAIEditFocusedInputSnapshot(
-                text: "Full input text",
-                role: kAXTextFieldRole as String,
-                isFullTextSelected: true
-            )
-        ))
-        #expect(UniversalAIEditFlow.canUseFocusedInputEditTarget(
-            UniversalAIEditFocusedInputSnapshot(
-                text: "Full input text",
-                role: kAXTextFieldRole as String,
-                identifier: "title"
-            )
-        ))
-        #expect(UniversalAIEditFlow.canUseFocusedInputEditTarget(
-            UniversalAIEditFocusedInputSnapshot(
-                text: "Full input text",
-                role: kAXTextFieldRole as String,
-                frame: CGRect(x: 20, y: 30, width: 240, height: 28)
-            )
-        ))
-        #expect(!UniversalAIEditFlow.canUseFocusedInputEditTarget(
-            UniversalAIEditFocusedInputSnapshot(
-                text: "Full input text",
-                role: kAXTextFieldRole as String
-            )
-        ))
+    @Test func commandASelectionOnlyFollowsConfirmedNoSelection() {
+        #expect(UniversalAIEditFlow.shouldAttemptCommandASelection(after: .noSelection))
+        #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(after: .captured))
+        #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(after: .accessibilityMissing))
+        #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(after: .failed))
     }
 
-    @Test func focusedInputFallbackOnlyRunsWhenSelectionIsSafelyRuledOut() {
-        #expect(UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .noSelection,
-            focusedInputSelectionState: .unknown
+    @Test func commandASelectionRequiresTargetContinuity() {
+        let target = UniversalAIEditTargetSnapshot(
+            appName: "Chrome",
+            bundleIdentifier: "com.google.Chrome",
+            processIdentifier: 101,
+            focusedWindowTitle: "Takode",
+            focusedWindowFrame: CGRect(x: 20, y: 30, width: 900, height: 700)
+        )
+
+        #expect(UniversalAIEditFlow.targetContinuityMaintained(
+            before: target,
+            after: UniversalAIEditTargetSnapshot(
+                appName: "Chrome",
+                bundleIdentifier: "com.google.Chrome",
+                processIdentifier: 101,
+                focusedWindowTitle: "Takode",
+                focusedWindowFrame: CGRect(x: 24, y: 34, width: 900, height: 700)
+            )
         ))
-        #expect(UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .noSelection,
-            focusedInputSelectionState: .noSelection
+        #expect(!UniversalAIEditFlow.targetContinuityMaintained(
+            before: target,
+            after: UniversalAIEditTargetSnapshot(
+                appName: "Notes",
+                bundleIdentifier: "com.apple.Notes",
+                processIdentifier: 202,
+                focusedWindowTitle: "Takode",
+                focusedWindowFrame: target.focusedWindowFrame
+            )
         ))
-        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .noSelection,
-            focusedInputSelectionState: .hasSelection
+        #expect(!UniversalAIEditFlow.targetContinuityMaintained(
+            before: target,
+            after: UniversalAIEditTargetSnapshot(
+                appName: "Chrome",
+                bundleIdentifier: "com.google.Chrome",
+                processIdentifier: 101,
+                focusedWindowTitle: "Different tab",
+                focusedWindowFrame: target.focusedWindowFrame
+            )
         ))
-        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .captured,
-            focusedInputSelectionState: .noSelection
-        ))
-        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .accessibilityMissing,
-            focusedInputSelectionState: .noSelection
-        ))
-        #expect(UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .failed,
-            focusedInputSelectionState: .noSelection
-        ))
-        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .failed,
-            focusedInputSelectionState: .hasSelection
-        ))
-        #expect(!UniversalAIEditFlow.shouldUseFocusedInputFallback(
-            selectedTextOutcome: .failed,
-            focusedInputSelectionState: .unknown
+        #expect(!UniversalAIEditFlow.targetContinuityMaintained(
+            before: target,
+            after: UniversalAIEditTargetSnapshot(
+                appName: "Chrome",
+                bundleIdentifier: "com.google.Chrome",
+                processIdentifier: 101,
+                focusedWindowTitle: "Takode",
+                focusedWindowFrame: CGRect(x: 400, y: 30, width: 900, height: 700)
+            )
         ))
     }
 

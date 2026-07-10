@@ -94,17 +94,11 @@ enum UniversalAIEditEditTargetSource: Equatable {
     case focusedInput
 }
 
-enum UniversalAIEditSelectedTextCaptureOutcome: Equatable {
+enum UniversalAIEditSelectionCaptureOutcome: Equatable {
     case captured
     case noSelection
     case accessibilityMissing
     case failed
-}
-
-enum UniversalAIEditFocusedInputSelectionState: Equatable {
-    case noSelection
-    case hasSelection
-    case unknown
 }
 
 struct UniversalAIEditFocusedInputSnapshot: Equatable {
@@ -167,24 +161,35 @@ enum UniversalAIEditFlow {
         return supportedFocusedInputRoles.contains(role)
     }
 
-    static func canUseFocusedInputEditTarget(_ snapshot: UniversalAIEditFocusedInputSnapshot) -> Bool {
-        snapshot.isFullTextSelected ||
-            normalizedIdentifier(snapshot.identifier) != nil ||
-            snapshot.frame != nil
+    static func shouldAttemptCommandASelection(
+        after outcome: UniversalAIEditSelectionCaptureOutcome
+    ) -> Bool {
+        outcome == .noSelection
     }
 
-    static func shouldUseFocusedInputFallback(
-        selectedTextOutcome: UniversalAIEditSelectedTextCaptureOutcome,
-        focusedInputSelectionState: UniversalAIEditFocusedInputSelectionState
+    static func targetContinuityMaintained(
+        before: UniversalAIEditTargetSnapshot,
+        after: UniversalAIEditTargetSnapshot,
+        frameTolerance: CGFloat = 64
     ) -> Bool {
-        switch selectedTextOutcome {
-        case .noSelection:
-            return focusedInputSelectionState != .hasSelection
-        case .failed:
-            return focusedInputSelectionState == .noSelection
-        case .captured, .accessibilityMissing:
+        guard before.processIdentifier == after.processIdentifier,
+              before.bundleIdentifier == after.bundleIdentifier else {
             return false
         }
+
+        if let beforeTitle = normalizedWindowText(before.focusedWindowTitle),
+           let afterTitle = normalizedWindowText(after.focusedWindowTitle),
+           beforeTitle != afterTitle {
+            return false
+        }
+
+        if let beforeFrame = before.focusedWindowFrame,
+           let afterFrame = after.focusedWindowFrame,
+           frameDistance(beforeFrame, afterFrame) > frameTolerance {
+            return false
+        }
+
+        return true
     }
 
     static func shouldReplaceFocusedInputOnApply(
@@ -396,6 +401,12 @@ enum UniversalAIEditFlow {
     private static func normalizedIdentifier(_ identifier: String?) -> String? {
         guard let identifier else { return nil }
         let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func normalizedWindowText(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
