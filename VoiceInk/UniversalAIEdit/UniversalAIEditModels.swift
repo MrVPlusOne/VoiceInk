@@ -101,6 +101,12 @@ enum UniversalAIEditSelectionCaptureOutcome: Equatable {
     case failed
 }
 
+enum UniversalAIEditSelectionPresence: Equatable {
+    case hasSelection
+    case noSelection
+    case unknown
+}
+
 struct UniversalAIEditFocusedInputSnapshot: Equatable {
     let text: String
     let role: String?
@@ -162,9 +168,17 @@ enum UniversalAIEditFlow {
     }
 
     static func shouldAttemptCommandASelection(
-        after outcome: UniversalAIEditSelectionCaptureOutcome
+        after outcome: UniversalAIEditSelectionCaptureOutcome,
+        focusedSelectionPresence: UniversalAIEditSelectionPresence = .unknown
     ) -> Bool {
-        outcome == .noSelection
+        switch outcome {
+        case .captured, .accessibilityMissing:
+            return false
+        case .noSelection:
+            return true
+        case .failed:
+            return focusedSelectionPresence != .hasSelection
+        }
     }
 
     static func targetContinuityMaintained(

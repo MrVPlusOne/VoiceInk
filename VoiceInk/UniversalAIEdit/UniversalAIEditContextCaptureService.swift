@@ -1,45 +1,63 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import os
 
 @MainActor
 final class UniversalAIEditContextCaptureService {
     private static let selectAllEventDelay: TimeInterval = 0.01
     private static let postSelectAllCaptureDelay: TimeInterval = 0.15
     private static let postSelectionCollapseDelay: TimeInterval = 0.08
+    private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "UniversalAIEditCapture")
 
     func capture(configuration: EnhancementRuntimeConfiguration?) async -> UniversalAIEditContext {
         let target = targetSnapshot()
         var targetForContext = target
+        let focusedSelectionPresence = focusedSelectionPresence(in: target)
+        Self.logger.info(
+            "AI Edit capture target app=\(target.appName ?? "nil", privacy: .public) bundle=\(target.bundleIdentifier ?? "nil", privacy: .public) pid=\(target.processIdentifier ?? -1, privacy: .public) focusedSelection=\(String(describing: focusedSelectionPresence), privacy: .public)"
+        )
         var selectedTextResult = await SelectedTextService.captureSelectedText()
+        Self.logger.info(
+            "AI Edit initial selected text capture outcome=\(self.describe(selectedTextResult), privacy: .public)"
+        )
         var diagnostics: [UniversalAIEditCaptureDiagnostic] = []
         var didPostCommandA = false
 
         switch selectedTextResult {
         case .captured:
             break
-        case .noSelection:
+        case .noSelection, .failed:
             if UniversalAIEditFlow.shouldAttemptCommandASelection(
-                after: selectionOutcome(from: selectedTextResult)
+                after: selectionOutcome(from: selectedTextResult),
+                focusedSelectionPresence: focusedSelectionPresence
             ),
                await selectAllWithCommandA(in: target) {
                 didPostCommandA = true
                 let targetAfterSelectAll = targetSnapshot()
-                if UniversalAIEditFlow.targetContinuityMaintained(
+                let continuityMaintained = UniversalAIEditFlow.targetContinuityMaintained(
                     before: target,
                     after: targetAfterSelectAll
-                ) {
+                )
+                Self.logger.info(
+                    "AI Edit Command-A posted; target continuity=\(continuityMaintained, privacy: .public) afterApp=\(targetAfterSelectAll.appName ?? "nil", privacy: .public) afterBundle=\(targetAfterSelectAll.bundleIdentifier ?? "nil", privacy: .public) afterPid=\(targetAfterSelectAll.processIdentifier ?? -1, privacy: .public)"
+                )
+                if continuityMaintained {
                     selectedTextResult = await SelectedTextService.captureSelectedText()
+                    Self.logger.info(
+                        "AI Edit post-Command-A selected text capture outcome=\(self.describe(selectedTextResult), privacy: .public)"
+                    )
                 } else {
                     diagnostics.append(.selectedTextUnavailable)
                 }
             } else {
+                Self.logger.info(
+                    "AI Edit skipped Command-A; outcome=\(self.describe(selectedTextResult), privacy: .public) focusedSelection=\(String(describing: focusedSelectionPresence), privacy: .public)"
+                )
                 diagnostics.append(.selectedTextUnavailable)
             }
         case .accessibilityMissing:
             diagnostics.append(.accessibilityPermissionMissing)
-        case .failed:
-            diagnostics.append(.selectedTextCaptureFailed)
         }
 
         if UniversalAIEditFlow.shouldClearUnacceptedCommandASelection(
@@ -47,8 +65,12 @@ final class UniversalAIEditContextCaptureService {
             selectionWasAccepted: selectedTextResult.text != nil
         ) {
             let didClearSelection = await collapseSelectionAfterCommandA(in: target)
+            Self.logger.info(
+                "AI Edit Command-A selection not accepted; cleanup posted=\(didClearSelection, privacy: .public)"
+            )
             if !didClearSelection {
                 targetForContext = copyOnlyTarget(from: target)
+                Self.logger.info("AI Edit using copy-only target after unaccepted Command-A selection")
             }
         }
 
@@ -118,6 +140,19 @@ final class UniversalAIEditContextCaptureService {
             screenshotContext: screenshotContext,
             diagnostics: diagnostics
         )
+    }
+
+    private func describe(_ result: SelectedTextService.CaptureResult) -> String {
+        switch result {
+        case .captured(let text):
+            return "captured(length=\(text.count))"
+        case .noSelection:
+            return "noSelection"
+        case .accessibilityMissing:
+            return "accessibilityMissing"
+        case .failed(let message):
+            return "failed(\(message))"
+        }
     }
 
     private func selectionOutcome(
@@ -208,6 +243,28 @@ final class UniversalAIEditContextCaptureService {
         return value as? String
     }
 
+    private func focusedSelectionPresence(in target: UniversalAIEditTargetSnapshot) -> UniversalAIEditSelectionPresence {
+        guard let targetProcessIdentifier = target.processIdentifier,
+              AXIsProcessTrusted() else {
+            return .unknown
+        }
+
+        let appElement = AXUIElementCreateApplication(targetProcessIdentifier)
+        guard let focusedElement = copyAXElementAttribute(kAXFocusedUIElementAttribute, from: appElement) else {
+            return .unknown
+        }
+
+        if let selectedText = copyStringAttribute(kAXSelectedTextAttribute, from: focusedElement) {
+            return selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .noSelection : .hasSelection
+        }
+
+        if let selectedRange = copyCFRangeAttribute(kAXSelectedTextRangeAttribute, from: focusedElement) {
+            return selectedRange.length > 0 ? .hasSelection : .noSelection
+        }
+
+        return .unknown
+    }
+
     private func copyOnlyTarget(from target: UniversalAIEditTargetSnapshot) -> UniversalAIEditTargetSnapshot {
         UniversalAIEditTargetSnapshot(
             appName: target.appName,
@@ -219,9 +276,21 @@ final class UniversalAIEditContextCaptureService {
     }
 
     private func selectAllWithCommandA(in target: UniversalAIEditTargetSnapshot) async -> Bool {
-        guard let targetProcessIdentifier = target.processIdentifier,
-              AXIsProcessTrusted(),
-              NSWorkspace.shared.frontmostApplication?.processIdentifier == targetProcessIdentifier else {
+        guard let targetProcessIdentifier = target.processIdentifier else {
+            Self.logger.info("AI Edit Command-A not posted; missing target process")
+            return false
+        }
+
+        guard AXIsProcessTrusted() else {
+            Self.logger.info("AI Edit Command-A not posted; Accessibility unavailable")
+            return false
+        }
+
+        let frontmostProcessIdentifier = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard frontmostProcessIdentifier == targetProcessIdentifier else {
+            Self.logger.info(
+                "AI Edit Command-A not posted; target pid=\(targetProcessIdentifier, privacy: .public) frontmost pid=\(frontmostProcessIdentifier ?? -1, privacy: .public)"
+            )
             return false
         }
 
@@ -230,6 +299,7 @@ final class UniversalAIEditContextCaptureService {
               let aDown = CGEvent(keyboardEventSource: source, virtualKey: 0x00, keyDown: true),
               let aUp = CGEvent(keyboardEventSource: source, virtualKey: 0x00, keyDown: false),
               let commandUp = CGEvent(keyboardEventSource: source, virtualKey: 0x37, keyDown: false) else {
+            Self.logger.info("AI Edit Command-A not posted; failed to create keyboard events")
             return false
         }
 
@@ -252,6 +322,9 @@ final class UniversalAIEditContextCaptureService {
         guard let targetProcessIdentifier = target.processIdentifier,
               AXIsProcessTrusted(),
               NSWorkspace.shared.frontmostApplication?.processIdentifier == targetProcessIdentifier else {
+            Self.logger.info(
+                "AI Edit Command-A cleanup skipped; target is not frontmost or Accessibility unavailable"
+            )
             return false
         }
 
@@ -281,6 +354,21 @@ final class UniversalAIEditContextCaptureService {
             return nil
         }
         return point
+    }
+
+    private func copyCFRangeAttribute(_ attribute: String, from element: AXUIElement) -> CFRange? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+
+        var range = CFRange()
+        guard AXValueGetValue((value as! AXValue), .cfRange, &range) else {
+            return nil
+        }
+        return range
     }
 
     private func copyCGSizeAttribute(_ attribute: String, from element: AXUIElement) -> CGSize? {

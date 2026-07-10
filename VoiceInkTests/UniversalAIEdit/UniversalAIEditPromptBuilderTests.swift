@@ -615,7 +615,18 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(UniversalAIEditFlow.shouldAttemptCommandASelection(after: .noSelection))
         #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(after: .captured))
         #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(after: .accessibilityMissing))
-        #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(after: .failed))
+        #expect(UniversalAIEditFlow.shouldAttemptCommandASelection(
+            after: .failed,
+            focusedSelectionPresence: .noSelection
+        ))
+        #expect(UniversalAIEditFlow.shouldAttemptCommandASelection(
+            after: .failed,
+            focusedSelectionPresence: .unknown
+        ))
+        #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(
+            after: .failed,
+            focusedSelectionPresence: .hasSelection
+        ))
     }
 
     @Test func unacceptedCommandASelectionRequiresCleanup() {
