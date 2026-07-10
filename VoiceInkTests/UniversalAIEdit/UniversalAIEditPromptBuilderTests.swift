@@ -618,6 +618,21 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!UniversalAIEditFlow.shouldAttemptCommandASelection(after: .failed))
     }
 
+    @Test func unacceptedCommandASelectionRequiresCleanup() {
+        #expect(UniversalAIEditFlow.shouldClearUnacceptedCommandASelection(
+            didPostCommandA: true,
+            selectionWasAccepted: false
+        ))
+        #expect(!UniversalAIEditFlow.shouldClearUnacceptedCommandASelection(
+            didPostCommandA: true,
+            selectionWasAccepted: true
+        ))
+        #expect(!UniversalAIEditFlow.shouldClearUnacceptedCommandASelection(
+            didPostCommandA: false,
+            selectionWasAccepted: false
+        ))
+    }
+
     @Test func commandASelectionRequiresTargetContinuity() {
         let target = UniversalAIEditTargetSnapshot(
             appName: "Chrome",

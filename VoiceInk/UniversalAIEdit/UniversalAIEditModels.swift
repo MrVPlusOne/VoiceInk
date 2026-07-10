@@ -192,6 +192,13 @@ enum UniversalAIEditFlow {
         return true
     }
 
+    static func shouldClearUnacceptedCommandASelection(
+        didPostCommandA: Bool,
+        selectionWasAccepted: Bool
+    ) -> Bool {
+        didPostCommandA && !selectionWasAccepted
+    }
+
     static func shouldReplaceFocusedInputOnApply(
         generatedInputSnapshot: UniversalAIEditInputSnapshot?,
         currentInputSnapshot: UniversalAIEditInputSnapshot?

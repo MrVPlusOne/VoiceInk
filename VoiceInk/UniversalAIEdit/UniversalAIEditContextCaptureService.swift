@@ -6,11 +6,14 @@ import Foundation
 final class UniversalAIEditContextCaptureService {
     private static let selectAllEventDelay: TimeInterval = 0.01
     private static let postSelectAllCaptureDelay: TimeInterval = 0.15
+    private static let postSelectionCollapseDelay: TimeInterval = 0.08
 
     func capture(configuration: EnhancementRuntimeConfiguration?) async -> UniversalAIEditContext {
         let target = targetSnapshot()
+        var targetForContext = target
         var selectedTextResult = await SelectedTextService.captureSelectedText()
         var diagnostics: [UniversalAIEditCaptureDiagnostic] = []
+        var didPostCommandA = false
 
         switch selectedTextResult {
         case .captured:
@@ -20,6 +23,7 @@ final class UniversalAIEditContextCaptureService {
                 after: selectionOutcome(from: selectedTextResult)
             ),
                await selectAllWithCommandA(in: target) {
+                didPostCommandA = true
                 let targetAfterSelectAll = targetSnapshot()
                 if UniversalAIEditFlow.targetContinuityMaintained(
                     before: target,
@@ -36,6 +40,16 @@ final class UniversalAIEditContextCaptureService {
             diagnostics.append(.accessibilityPermissionMissing)
         case .failed:
             diagnostics.append(.selectedTextCaptureFailed)
+        }
+
+        if UniversalAIEditFlow.shouldClearUnacceptedCommandASelection(
+            didPostCommandA: didPostCommandA,
+            selectionWasAccepted: selectedTextResult.text != nil
+        ) {
+            let didClearSelection = await collapseSelectionAfterCommandA(in: target)
+            if !didClearSelection {
+                targetForContext = copyOnlyTarget(from: target)
+            }
         }
 
         let clipboardText = configuration?.useClipboardContext == true
@@ -95,7 +109,7 @@ final class UniversalAIEditContextCaptureService {
 
         return UniversalAIEditContext(
             capturedAt: Date(),
-            target: target,
+            target: targetForContext,
             selectedText: selectedText,
             editTargetSource: editTargetSource,
             focusedInput: nil,
@@ -194,6 +208,16 @@ final class UniversalAIEditContextCaptureService {
         return value as? String
     }
 
+    private func copyOnlyTarget(from target: UniversalAIEditTargetSnapshot) -> UniversalAIEditTargetSnapshot {
+        UniversalAIEditTargetSnapshot(
+            appName: target.appName,
+            bundleIdentifier: target.bundleIdentifier,
+            processIdentifier: nil,
+            focusedWindowTitle: target.focusedWindowTitle,
+            focusedWindowFrame: target.focusedWindowFrame
+        )
+    }
+
     private func selectAllWithCommandA(in target: UniversalAIEditTargetSnapshot) async -> Bool {
         guard let targetProcessIdentifier = target.processIdentifier,
               AXIsProcessTrusted(),
@@ -221,6 +245,26 @@ final class UniversalAIEditContextCaptureService {
         await wait(Self.selectAllEventDelay)
         commandUp.post(tap: .cghidEventTap)
         await wait(Self.postSelectAllCaptureDelay)
+        return true
+    }
+
+    private func collapseSelectionAfterCommandA(in target: UniversalAIEditTargetSnapshot) async -> Bool {
+        guard let targetProcessIdentifier = target.processIdentifier,
+              AXIsProcessTrusted(),
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == targetProcessIdentifier else {
+            return false
+        }
+
+        let source = CGEventSource(stateID: .privateState)
+        guard let rightArrowDown = CGEvent(keyboardEventSource: source, virtualKey: 0x7C, keyDown: true),
+              let rightArrowUp = CGEvent(keyboardEventSource: source, virtualKey: 0x7C, keyDown: false) else {
+            return false
+        }
+
+        rightArrowDown.post(tap: .cghidEventTap)
+        await wait(Self.selectAllEventDelay)
+        rightArrowUp.post(tap: .cghidEventTap)
+        await wait(Self.postSelectionCollapseDelay)
         return true
     }
 
