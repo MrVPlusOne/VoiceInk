@@ -434,7 +434,7 @@ struct UniversalAIEditPanelView: View {
                     ForEach(Array(manager.promptTemplates.enumerated()), id: \.element.id) { index, template in
                         UniversalAIEditPromptTemplateButton(
                             template: template,
-                            shortcutNumber: UniversalAIEditPromptTemplateShortcut.number(forButtonIndex: index),
+                            shortcutDisplayNumber: UniversalAIEditPromptTemplateShortcut.displayNumber(forButtonIndex: index),
                             onClick: {
                                 manager.activatePromptTemplate(template)
                             },
@@ -842,15 +842,14 @@ private struct PromptTemplateEditorPresentation: Identifiable {
 
 private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
     let template: UniversalAIEditPromptTemplate
-    let shortcutNumber: Int?
+    let shortcutDisplayNumber: String?
     let onClick: () -> Void
     let onDoubleClick: () -> Void
 
     func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(title: template.label, target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
+        let button = NSButton(title: "", target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
         button.bezelStyle = .rounded
         button.controlSize = .small
-        button.font = .systemFont(ofSize: 11, weight: .medium)
         button.setContentHuggingPriority(.required, for: .horizontal)
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         configure(button)
@@ -860,7 +859,6 @@ private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
     func updateNSView(_ nsView: NSButton, context: Context) {
         context.coordinator.onClick = onClick
         context.coordinator.onDoubleClick = onDoubleClick
-        nsView.title = template.label
         configure(nsView)
     }
 
@@ -869,15 +867,44 @@ private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
     }
 
     private func configure(_ button: NSButton) {
+        button.attributedTitle = attributedTitle
         button.toolTip = tooltip
         button.sendAction(on: [.leftMouseUp])
     }
 
     private var tooltip: String {
-        if let shortcutNumber {
-            return String(format: String(localized: "Command+%lld inserts %@"), Int64(shortcutNumber == 10 ? 0 : shortcutNumber), template.label)
+        if let shortcutDisplayNumber {
+            return String(format: String(localized: "Command+%@ inserts %@"), shortcutDisplayNumber, template.label)
         }
         return template.label
+    }
+
+    private var attributedTitle: NSAttributedString {
+        let title = NSMutableAttributedString()
+
+        if let shortcutDisplayNumber {
+            title.append(
+                NSAttributedString(
+                    string: "\(shortcutDisplayNumber) ",
+                    attributes: [
+                        .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold),
+                        .foregroundColor: NSColor.secondaryLabelColor
+                    ]
+                )
+            )
+        }
+
+        title.append(
+            NSAttributedString(
+                string: template.label,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                    .foregroundColor: NSColor.labelColor
+                ]
+            )
+        )
+
+        return title
     }
 
     final class Coordinator: NSObject {

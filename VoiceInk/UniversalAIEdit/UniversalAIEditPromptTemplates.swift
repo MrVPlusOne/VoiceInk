@@ -103,6 +103,11 @@ enum UniversalAIEditPromptTemplateShortcut {
         return index == 9 ? 10 : index + 1
     }
 
+    static func displayNumber(forButtonIndex index: Int) -> String? {
+        guard let number = number(forButtonIndex: index) else { return nil }
+        return number == 10 ? "0" : "\(number)"
+    }
+
     static func number(forKeyCode keyCode: UInt16) -> Int? {
         switch keyCode {
         case 18: return 1

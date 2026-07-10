@@ -88,6 +88,10 @@ struct UniversalAIEditPromptTemplateTests {
         #expect(UniversalAIEditPromptTemplateShortcut.number(forButtonIndex: 8) == 9)
         #expect(UniversalAIEditPromptTemplateShortcut.number(forButtonIndex: 9) == 10)
         #expect(UniversalAIEditPromptTemplateShortcut.number(forButtonIndex: 10) == nil)
+        #expect(UniversalAIEditPromptTemplateShortcut.displayNumber(forButtonIndex: 0) == "1")
+        #expect(UniversalAIEditPromptTemplateShortcut.displayNumber(forButtonIndex: 8) == "9")
+        #expect(UniversalAIEditPromptTemplateShortcut.displayNumber(forButtonIndex: 9) == "0")
+        #expect(UniversalAIEditPromptTemplateShortcut.displayNumber(forButtonIndex: 10) == nil)
 
         #expect(UniversalAIEditPromptTemplateShortcut.number(forKeyCode: 18) == 1)
         #expect(UniversalAIEditPromptTemplateShortcut.number(forKeyCode: 25) == 9)
