@@ -35,6 +35,7 @@ final class UniversalAIEditManager: ObservableObject {
     private var generatedInputSnapshot: UniversalAIEditInputSnapshot?
     private var panelSessionID: UUID?
     private var activeGenerationID: UUID?
+    private var isActivatingPromptTemplateRun = false
     private weak var instructionTextView: NSTextView?
 
     private init() {}
@@ -304,9 +305,33 @@ final class UniversalAIEditManager: ObservableObject {
     @discardableResult
     func activatePromptTemplate(_ template: UniversalAIEditPromptTemplate, runAfterInsert: Bool = false) -> Bool {
         guard promptTemplates.contains(where: { $0.id == template.id }) else { return false }
-        if runAfterInsert,
-           !UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: phase) {
-            return false
+        if runAfterInsert {
+            guard !isActivatingPromptTemplateRun,
+                  UniversalAIEditPromptTemplateGenerationActivation.canActivate(
+                    phase: phase,
+                    isVoiceRecording: isVoiceRecording
+                  ) else {
+                return false
+            }
+
+            if UniversalAIEditPromptTemplateGenerationActivation.shouldCancelVoiceBeforeActivation(
+                phase: phase,
+                isVoiceRecording: isVoiceRecording
+            ) {
+                isActivatingPromptTemplateRun = true
+                Task { @MainActor in
+                    defer { isActivatingPromptTemplateRun = false }
+                    guard phase == .listening,
+                          isVoiceRecording else {
+                        return
+                    }
+                    await cancelVoiceInstruction()
+                    phase = .ready
+                    statusText = nil
+                    insertPromptTemplateContent(template.content, runAfterInsert: true)
+                }
+                return true
+            }
         }
 
         insertPromptTemplateContent(template.content, runAfterInsert: runAfterInsert)

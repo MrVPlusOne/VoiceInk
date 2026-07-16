@@ -117,8 +117,21 @@ enum UniversalAIEditPromptTemplateMouseActivation {
 }
 
 enum UniversalAIEditPromptTemplateGenerationActivation {
-    static func canActivate(phase: UniversalAIEditPhase) -> Bool {
-        !phase.isBusy
+    static func canActivate(
+        phase: UniversalAIEditPhase,
+        isVoiceRecording: Bool
+    ) -> Bool {
+        !phase.isBusy || shouldCancelVoiceBeforeActivation(
+            phase: phase,
+            isVoiceRecording: isVoiceRecording
+        )
+    }
+
+    static func shouldCancelVoiceBeforeActivation(
+        phase: UniversalAIEditPhase,
+        isVoiceRecording: Bool
+    ) -> Bool {
+        phase == .listening && isVoiceRecording
     }
 }
 

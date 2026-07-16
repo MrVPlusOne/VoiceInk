@@ -102,14 +102,30 @@ struct UniversalAIEditPromptTemplateTests {
     }
 
     @Test func generationActivationIsBlockedDuringBusyPhases() {
-        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .ready))
-        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .preview))
-        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .failed("Try again")))
-        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .capturing))
-        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .listening))
-        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .transcribingInstruction))
-        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .generating))
-        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .applying))
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .ready, isVoiceRecording: false))
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .preview, isVoiceRecording: false))
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .failed("Try again"), isVoiceRecording: false))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .capturing, isVoiceRecording: false))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .listening, isVoiceRecording: false))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .transcribingInstruction, isVoiceRecording: false))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .generating, isVoiceRecording: false))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .applying, isVoiceRecording: false))
+    }
+
+    @Test func generationActivationAllowsListeningOnlyToCancelActiveVoiceRecording() {
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .listening, isVoiceRecording: true))
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.shouldCancelVoiceBeforeActivation(
+            phase: .listening,
+            isVoiceRecording: true
+        ))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.shouldCancelVoiceBeforeActivation(
+            phase: .ready,
+            isVoiceRecording: true
+        ))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.shouldCancelVoiceBeforeActivation(
+            phase: .listening,
+            isVoiceRecording: false
+        ))
     }
 
     @Test func commandNumberShortcutMapsVisibleButtonOrder() {
