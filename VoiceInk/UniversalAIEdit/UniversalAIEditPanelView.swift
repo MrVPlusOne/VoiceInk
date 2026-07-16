@@ -458,9 +458,6 @@ struct UniversalAIEditPanelView: View {
                             template: template,
                             shortcutDisplayNumber: UniversalAIEditPromptTemplateShortcut.displayNumber(forButtonIndex: index),
                             onClick: {
-                                manager.activatePromptTemplate(template)
-                            },
-                            onDoubleClick: {
                                 manager.activatePromptTemplate(template, runAfterInsert: true)
                             }
                         )
@@ -866,7 +863,6 @@ private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
     let template: UniversalAIEditPromptTemplate
     let shortcutDisplayNumber: String?
     let onClick: () -> Void
-    let onDoubleClick: () -> Void
 
     func makeNSView(context: Context) -> NSButton {
         let button = NSButton(title: "", target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
@@ -880,12 +876,11 @@ private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSButton, context: Context) {
         context.coordinator.onClick = onClick
-        context.coordinator.onDoubleClick = onDoubleClick
         configure(nsView)
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onClick: onClick, onDoubleClick: onDoubleClick)
+        Coordinator(onClick: onClick)
     }
 
     private func configure(_ button: NSButton) {
@@ -896,9 +891,9 @@ private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
 
     private var tooltip: String {
         if let shortcutDisplayNumber {
-            return String(format: String(localized: "Command+%@ inserts %@"), shortcutDisplayNumber, template.label)
+            return String(format: String(localized: "Click to run %@. Command+%@ inserts it."), template.label, shortcutDisplayNumber)
         }
-        return template.label
+        return String(format: String(localized: "Click to run %@"), template.label)
     }
 
     private var attributedTitle: NSAttributedString {
@@ -931,29 +926,15 @@ private struct UniversalAIEditPromptTemplateButton: NSViewRepresentable {
 
     final class Coordinator: NSObject {
         var onClick: () -> Void
-        var onDoubleClick: () -> Void
-        private var pendingSingleClick: DispatchWorkItem?
 
-        init(onClick: @escaping () -> Void, onDoubleClick: @escaping () -> Void) {
+        init(onClick: @escaping () -> Void) {
             self.onClick = onClick
-            self.onDoubleClick = onDoubleClick
         }
 
         @objc func handleClick(_ sender: NSButton) {
             let clickCount = NSApp.currentEvent?.clickCount ?? 1
-            if clickCount >= 2 {
-                pendingSingleClick?.cancel()
-                pendingSingleClick = nil
-                onDoubleClick()
-                return
-            }
-
-            let workItem = DispatchWorkItem { [weak self] in
-                self?.onClick()
-                self?.pendingSingleClick = nil
-            }
-            pendingSingleClick = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: workItem)
+            guard UniversalAIEditPromptTemplateMouseActivation.shouldActivate(clickCount: clickCount) else { return }
+            onClick()
         }
     }
 }

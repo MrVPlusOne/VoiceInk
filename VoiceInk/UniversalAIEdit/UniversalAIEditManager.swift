@@ -304,6 +304,11 @@ final class UniversalAIEditManager: ObservableObject {
     @discardableResult
     func activatePromptTemplate(_ template: UniversalAIEditPromptTemplate, runAfterInsert: Bool = false) -> Bool {
         guard promptTemplates.contains(where: { $0.id == template.id }) else { return false }
+        if runAfterInsert,
+           !UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: phase) {
+            return false
+        }
+
         insertPromptTemplateContent(template.content, runAfterInsert: runAfterInsert)
         return true
     }
@@ -374,14 +379,14 @@ final class UniversalAIEditManager: ObservableObject {
             mode: requestMode,
             context: requestContext
         )
+        generatedInputSnapshot = nil
+        phase = .generating
+        statusText = String(localized: "Generating...")
 
         Task { @MainActor in
             guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
                 return
             }
-            generatedInputSnapshot = nil
-            phase = .generating
-            statusText = String(localized: "Generating...")
             do {
                 let result = try await editService.generate(
                     instruction: requestInstruction,
@@ -586,7 +591,8 @@ final class UniversalAIEditManager: ObservableObject {
         let result = UniversalAIEditPromptTemplateInsertion.insert(
             content,
             into: instruction,
-            selectedRange: selectedRange
+            selectedRange: selectedRange,
+            strategy: runAfterInsert ? .replacingInstruction : .atEditorSelection
         )
         instruction = result.text
         requestInstructionFocus()
@@ -599,14 +605,8 @@ final class UniversalAIEditManager: ObservableObject {
         }
 
         guard runAfterInsert else { return }
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  self.canGenerate else {
-                return
-            }
-            self.generate()
-        }
+        guard canGenerate else { return }
+        generate()
     }
 
     private func openPanel(engine: VoiceInkEngine, startVoiceRecording: Bool = false) async {

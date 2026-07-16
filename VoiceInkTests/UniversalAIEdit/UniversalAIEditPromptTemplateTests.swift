@@ -83,6 +83,35 @@ struct UniversalAIEditPromptTemplateTests {
         #expect(result.caretLocation == ("Polish now" as NSString).length)
     }
 
+    @Test func runInsertionUsesTemplateAsWholeInstruction() {
+        let result = UniversalAIEditPromptTemplateInsertion.insert(
+            "Polish this for clarity.",
+            into: "Make it shorter and ",
+            selectedRange: NSRange(location: 20, length: 0),
+            strategy: .replacingInstruction
+        )
+
+        #expect(result.text == "Polish this for clarity.")
+        #expect(result.caretLocation == ("Polish this for clarity." as NSString).length)
+    }
+
+    @Test func mouseActivationRunsOnlyTheFirstClickOfADoubleClick() {
+        #expect(UniversalAIEditPromptTemplateMouseActivation.shouldActivate(clickCount: 1))
+        #expect(!UniversalAIEditPromptTemplateMouseActivation.shouldActivate(clickCount: 2))
+        #expect(!UniversalAIEditPromptTemplateMouseActivation.shouldActivate(clickCount: 3))
+    }
+
+    @Test func generationActivationIsBlockedDuringBusyPhases() {
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .ready))
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .preview))
+        #expect(UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .failed("Try again")))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .capturing))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .listening))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .transcribingInstruction))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .generating))
+        #expect(!UniversalAIEditPromptTemplateGenerationActivation.canActivate(phase: .applying))
+    }
+
     @Test func commandNumberShortcutMapsVisibleButtonOrder() {
         #expect(UniversalAIEditPromptTemplateShortcut.number(forButtonIndex: 0) == 1)
         #expect(UniversalAIEditPromptTemplateShortcut.number(forButtonIndex: 8) == 9)

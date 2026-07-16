@@ -59,14 +59,27 @@ struct UniversalAIEditPromptTemplateInsertionResult: Equatable {
     let caretLocation: Int
 }
 
+enum UniversalAIEditPromptTemplateInsertionStrategy {
+    case atEditorSelection
+    case replacingInstruction
+}
+
 enum UniversalAIEditPromptTemplateInsertion {
     static func insert(
         _ templateContent: String,
         into instruction: String,
-        selectedRange: NSRange?
+        selectedRange: NSRange?,
+        strategy: UniversalAIEditPromptTemplateInsertionStrategy = .atEditorSelection
     ) -> UniversalAIEditPromptTemplateInsertionResult {
         let nsInstruction = instruction as NSString
         let instructionLength = nsInstruction.length
+        if strategy == .replacingInstruction {
+            return UniversalAIEditPromptTemplateInsertionResult(
+                text: templateContent,
+                caretLocation: (templateContent as NSString).length
+            )
+        }
+
         let safeRange = clampedRange(selectedRange, instructionLength: instructionLength)
 
         guard let stringRange = Range(safeRange, in: instruction) else {
@@ -94,6 +107,18 @@ enum UniversalAIEditPromptTemplateInsertion {
         let maxLength = instructionLength - location
         let length = min(max(0, selectedRange.length), maxLength)
         return NSRange(location: location, length: length)
+    }
+}
+
+enum UniversalAIEditPromptTemplateMouseActivation {
+    static func shouldActivate(clickCount: Int) -> Bool {
+        clickCount <= 1
+    }
+}
+
+enum UniversalAIEditPromptTemplateGenerationActivation {
+    static func canActivate(phase: UniversalAIEditPhase) -> Bool {
+        !phase.isBusy
     }
 }
 
