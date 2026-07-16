@@ -1,10 +1,12 @@
 import AppKit
 import Foundation
+import os
 import SwiftUI
 
 @MainActor
 final class UniversalAIEditManager: ObservableObject {
     static let shared = UniversalAIEditManager()
+    private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "UniversalAIEditLaunch")
 
     @Published private(set) var phase: UniversalAIEditPhase = .idle
     @Published private(set) var context: UniversalAIEditContext?
@@ -608,6 +610,7 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     private func openPanel(engine: VoiceInkEngine, startVoiceRecording: Bool = false) async {
+        let launchStart = Date()
         phase = .capturing
         statusText = String(localized: "Capturing context...")
         generatedText = ""
@@ -618,18 +621,58 @@ final class UniversalAIEditManager: ObservableObject {
         activeGenerationID = nil
         instruction = ""
         let configuration = resolvedEnhancementConfiguration(engine: engine)
-        let capturedContext = await contextCaptureService.capture(configuration: configuration)
-        context = capturedContext
-        mode = capturedContext.mode
-        targetApp = capturedContext.target.processIdentifier.flatMap { pid in
+        let launchContext = await contextCaptureService.captureLaunchContext(configuration: configuration)
+        context = launchContext
+        mode = launchContext.mode
+        targetApp = launchContext.target.processIdentifier.flatMap { pid in
+            NSRunningApplication(processIdentifier: pid)
+        }
+        showPanel(autoFocusInstruction: !startVoiceRecording)
+        Self.logger.info(
+            "AI Edit panel shown after launch context elapsedMs=\(self.elapsedMilliseconds(since: launchStart), privacy: .public) hasSelection=\(launchContext.selectedText != nil, privacy: .public)"
+        )
+        statusText = contextCaptureStatusText(for: launchContext, configuration: configuration)
+
+        let sessionID = panelSessionID
+        let completedContext = await contextCaptureService.captureDeferredScreenContext(
+            for: launchContext,
+            configuration: configuration
+        )
+        guard panelSessionID == sessionID,
+              panel?.isVisible == true else {
+            return
+        }
+
+        context = completedContext
+        mode = completedContext.mode
+        targetApp = completedContext.target.processIdentifier.flatMap { pid in
             NSRunningApplication(processIdentifier: pid)
         }
         statusText = nil
         phase = .ready
-        showPanel(autoFocusInstruction: !startVoiceRecording)
-        if startVoiceRecording {
+        Self.logger.info(
+            "AI Edit context ready elapsedMs=\(self.elapsedMilliseconds(since: launchStart), privacy: .public) hasScreenText=\(completedContext.screenText != nil, privacy: .public) hasScreenshot=\(completedContext.screenshotContext != nil, privacy: .public)"
+        )
+        if UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
+            requested: startVoiceRecording,
+            instruction: instruction,
+            panelIsVisible: panel?.isVisible == true
+        ) {
             await startVoiceInstruction()
         }
+    }
+
+    private func contextCaptureStatusText(
+        for context: UniversalAIEditContext,
+        configuration: EnhancementRuntimeConfiguration?
+    ) -> String {
+        if configuration?.useScreenCaptureContext == true {
+            return String(localized: "Capturing screen context...")
+        }
+
+        return context.selectedText == nil
+            ? String(localized: "Finishing capture...")
+            : String(localized: "Preparing AI Edit...")
     }
 
     private func resolvedEnhancementConfiguration(engine: VoiceInkEngine) -> EnhancementRuntimeConfiguration? {
@@ -871,6 +914,10 @@ final class UniversalAIEditManager: ObservableObject {
 
     private func requestInstructionFocus() {
         instructionFocusRequest &+= 1
+    }
+
+    private func elapsedMilliseconds(since start: Date) -> Int {
+        max(0, Int(Date().timeIntervalSince(start) * 1000))
     }
 
     private func isCurrentGeneration(sessionID: UUID, generationID: UUID) -> Bool {

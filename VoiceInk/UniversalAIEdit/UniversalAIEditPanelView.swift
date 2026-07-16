@@ -244,6 +244,9 @@ struct UniversalAIEditPanelView: View {
     }
 
     private var screenChipTitle: String {
+        if screenContextCapturePending {
+            return String(localized: "Capturing screen")
+        }
         if diagnostics.contains(.screenContextDisabled) {
             return String(localized: "Screen off")
         }
@@ -269,6 +272,25 @@ struct UniversalAIEditPanelView: View {
             return String(localized: "Screen context")
         }
         return String(localized: "No screen context")
+    }
+
+    private var screenContextCapturePending: Bool {
+        guard manager.phase == .capturing,
+              manager.context != nil,
+              manager.context?.screenText == nil,
+              manager.context?.screenshotContext == nil else {
+            return false
+        }
+
+        let resolvedDiagnostics: [UniversalAIEditCaptureDiagnostic] = [
+            .screenContextDisabled,
+            .screenRecordingPermissionMissing,
+            .screenCaptureFailed,
+            .screenTextUnavailable,
+            .screenshotContextUnsupported,
+            .screenshotContextUnavailable
+        ]
+        return !diagnostics.contains { resolvedDiagnostics.contains($0) }
     }
 
     private var screenContextInspectorSubtitle: String {

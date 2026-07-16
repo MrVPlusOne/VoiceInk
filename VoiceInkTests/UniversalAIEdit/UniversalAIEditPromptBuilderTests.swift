@@ -572,6 +572,29 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: true))
     }
 
+    @Test func aiEditDeferredContextOnlyStartsVoiceForUnmodifiedVisiblePanel() {
+        #expect(UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
+            requested: true,
+            instruction: "",
+            panelIsVisible: true
+        ))
+        #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
+            requested: false,
+            instruction: "",
+            panelIsVisible: true
+        ))
+        #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
+            requested: true,
+            instruction: "Manual instruction",
+            panelIsVisible: true
+        ))
+        #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
+            requested: true,
+            instruction: "",
+            panelIsVisible: false
+        ))
+    }
+
     @Test func focusedInputSnapshotsStillSupportApplySafety() {
         #expect(UniversalAIEditFlow.normalizedFocusedInputText(
             role: kAXTextFieldRole as String,

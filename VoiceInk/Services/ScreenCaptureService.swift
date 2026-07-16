@@ -11,16 +11,16 @@ struct ActiveWindowCaptureResult {
     let screenshotContext: UniversalAIEditScreenshotContext?
 }
 
+struct ScreenCaptureWindowHint: Sendable {
+    let processID: pid_t
+    let title: String?
+    let frame: CGRect?
+}
+
 @MainActor
 class ScreenCaptureService: ObservableObject {
     @Published var isCapturing = false
     @Published var lastCapturedText: String?
-
-    private struct FocusedWindowHint: Sendable {
-        let processID: pid_t
-        let title: String?
-        let frame: CGRect?
-    }
 
     private static let captureTimeout: TimeInterval = 3.0
     private static let maximumCaptureDimension: CGFloat = 2800
@@ -52,6 +52,29 @@ class ScreenCaptureService: ObservableObject {
     }
 
     func captureWindowContext(includeScreenshot: Bool) async -> ActiveWindowCaptureResult? {
+        await captureWindowContext(
+            includeScreenshot: includeScreenshot,
+            focusedWindowHint: makeFocusedWindowHint(excluding: ProcessInfo.processInfo.processIdentifier),
+            allowFallbackWindow: true
+        )
+    }
+
+    func captureWindowContext(
+        includeScreenshot: Bool,
+        targetWindowHint: ScreenCaptureWindowHint
+    ) async -> ActiveWindowCaptureResult? {
+        await captureWindowContext(
+            includeScreenshot: includeScreenshot,
+            focusedWindowHint: targetWindowHint,
+            allowFallbackWindow: false
+        )
+    }
+
+    private func captureWindowContext(
+        includeScreenshot: Bool,
+        focusedWindowHint: ScreenCaptureWindowHint?,
+        allowFallbackWindow: Bool
+    ) async -> ActiveWindowCaptureResult? {
         guard !isCapturing else { return nil }
 
         isCapturing = true
@@ -60,13 +83,12 @@ class ScreenCaptureService: ObservableObject {
         }
 
         let currentPID = ProcessInfo.processInfo.processIdentifier
-        let focusedWindowHint = makeFocusedWindowHint(excluding: currentPID)
-
         guard let result = await Self.withTimeout(seconds: Self.captureTimeout, operation: {
             await Self.captureWindowContext(
                 focusedWindowHint: focusedWindowHint,
                 currentPID: currentPID,
-                includeScreenshot: includeScreenshot
+                includeScreenshot: includeScreenshot,
+                allowFallbackWindow: allowFallbackWindow
             )
         }) else {
             return nil
@@ -76,7 +98,7 @@ class ScreenCaptureService: ObservableObject {
         return result
     }
 
-    private func makeFocusedWindowHint(excluding currentPID: pid_t) -> FocusedWindowHint? {
+    private func makeFocusedWindowHint(excluding currentPID: pid_t) -> ScreenCaptureWindowHint? {
         guard let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
               frontmostPID != currentPID else {
             return nil
@@ -97,7 +119,7 @@ class ScreenCaptureService: ObservableObject {
             }
         }
 
-        return FocusedWindowHint(
+        return ScreenCaptureWindowHint(
             processID: frontmostPID,
             title: focusedTitle,
             frame: focusedFrame
@@ -105,9 +127,10 @@ class ScreenCaptureService: ObservableObject {
     }
 
     private nonisolated static func captureWindowContext(
-        focusedWindowHint: FocusedWindowHint?,
+        focusedWindowHint: ScreenCaptureWindowHint?,
         currentPID: pid_t,
-        includeScreenshot: Bool
+        includeScreenshot: Bool,
+        allowFallbackWindow: Bool
     ) async -> ActiveWindowCaptureResult? {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -115,7 +138,8 @@ class ScreenCaptureService: ObservableObject {
             guard let window = findActiveWindow(
                 in: content.windows,
                 focusedWindowHint: focusedWindowHint,
-                currentPID: currentPID
+                currentPID: currentPID,
+                allowFallbackWindow: allowFallbackWindow
             ) else {
                 return nil
             }
@@ -161,8 +185,9 @@ class ScreenCaptureService: ObservableObject {
 
     private nonisolated static func findActiveWindow(
         in windows: [SCWindow],
-        focusedWindowHint: FocusedWindowHint?,
-        currentPID: pid_t
+        focusedWindowHint: ScreenCaptureWindowHint?,
+        currentPID: pid_t,
+        allowFallbackWindow: Bool
     ) -> SCWindow? {
         let candidates = windows.filter { window in
             guard let processID = window.owningApplication?.processID else {
@@ -177,7 +202,7 @@ class ScreenCaptureService: ObservableObject {
         }
 
         guard let focusedWindowHint else {
-            return candidates.first
+            return allowFallbackWindow ? candidates.first : nil
         }
 
         let appWindows = candidates.filter {
@@ -185,7 +210,7 @@ class ScreenCaptureService: ObservableObject {
         }
 
         guard !appWindows.isEmpty else {
-            return candidates.first
+            return allowFallbackWindow ? candidates.first : nil
         }
 
         if let focusedFrame = focusedWindowHint.frame,

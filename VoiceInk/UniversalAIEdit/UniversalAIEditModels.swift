@@ -346,6 +346,16 @@ enum UniversalAIEditFlow {
         !panelIsVisible
     }
 
+    static func shouldStartVoiceInstructionAfterContextCapture(
+        requested: Bool,
+        instruction: String,
+        panelIsVisible: Bool
+    ) -> Bool {
+        requested &&
+            panelIsVisible &&
+            instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     static func shouldShowPreview(hasGeneratedText: Bool) -> Bool {
         hasGeneratedText
     }
