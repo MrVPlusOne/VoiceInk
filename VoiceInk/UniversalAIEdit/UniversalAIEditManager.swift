@@ -732,7 +732,7 @@ final class UniversalAIEditManager: ObservableObject {
             )
             let requestContext = TranscriptionRequestContext(
                 language: transcriptionConfiguration.language,
-                prompt: String(localized: "Transcribe this as a concise editing instruction. Preserve requested tone, length, audience, and formatting changes."),
+                prompt: UniversalAIEditInstructionTranscriptionProcessor.transcriptionPrompt,
                 recognitionContext: transcriptionConfiguration.requestContext(
                     recordingContextSnapshot: recognitionSnapshot,
                     sourceSettings: .enhancement(enhancementConfiguration)
@@ -743,9 +743,15 @@ final class UniversalAIEditManager: ObservableObject {
                 model: transcriptionConfiguration.model,
                 context: requestContext
             )
-            let trimmed = UniversalAIEditInstructionTranscriptionProcessor.process(
+            let locallyCleaned = UniversalAIEditInstructionTranscriptionProcessor.process(
                 text,
                 modelContext: engine.modelContext
+            )
+            let trimmed = await enhanceVoiceInstructionIfAvailable(
+                locallyCleaned,
+                enhancementConfiguration: enhancementConfiguration,
+                contextSnapshot: recognitionSnapshot,
+                engine: engine
             )
             if !trimmed.isEmpty {
                 if instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -762,6 +768,56 @@ final class UniversalAIEditManager: ObservableObject {
             try? FileManager.default.removeItem(at: audioURL)
             instructionAudioURL = nil
             fail(error)
+        }
+    }
+
+    private func enhanceVoiceInstructionIfAvailable(
+        _ text: String,
+        enhancementConfiguration: EnhancementRuntimeConfiguration?,
+        contextSnapshot: RecordingContextSnapshot,
+        engine: VoiceInkEngine
+    ) async -> String {
+        guard !text.isEmpty,
+              let enhancementService = engine.enhancementService,
+              let enhancementConfiguration,
+              enhancementConfiguration.isEnabled else {
+            return text
+        }
+
+        let instructionConfiguration = enhancementConfiguration.replacingPrompt(
+            UniversalAIEditInstructionTranscriptionProcessor.enhancementPrompt
+        )
+        guard enhancementService.isConfigured(for: instructionConfiguration) else {
+            return text
+        }
+
+        let savedThreshold = UserDefaults.standard.integer(forKey: "ShortEnhancementWordThreshold")
+        let shortEnhancementWordThreshold = savedThreshold > 0 ? savedThreshold : 3
+        guard !UniversalAIEditInstructionTranscriptionProcessor.shouldSkipEnhancement(
+            text: text,
+            isSkipShortEnhancementEnabled: UserDefaults.standard.bool(forKey: "SkipShortEnhancement"),
+            wordThreshold: shortEnhancementWordThreshold
+        ) else {
+            return text
+        }
+
+        statusText = String(localized: "Enhancing instruction...")
+        do {
+            let (enhancedText, _, _) = try await enhancementService.enhance(
+                text,
+                configuration: instructionConfiguration,
+                contextSnapshot: contextSnapshot
+            )
+            let cleaned = UniversalAIEditInstructionTranscriptionProcessor.localCleanup(enhancedText)
+            return cleaned.isEmpty ? text : cleaned
+        } catch {
+            let errorDescription = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let shortReason = String(errorDescription.prefix(80))
+            NotificationManager.shared.showNotification(
+                title: String(format: String(localized: "Instruction enhancement failed: %@"), shortReason),
+                type: .warning
+            )
+            return text
         }
     }
 
