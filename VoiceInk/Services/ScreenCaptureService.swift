@@ -213,6 +213,12 @@ class ScreenCaptureService: ObservableObject {
             return allowFallbackWindow ? candidates.first : nil
         }
 
+        let hasSpecificWindowIdentity = focusedWindowHint.frame != nil ||
+            normalized(focusedWindowHint.title) != nil
+        guard hasSpecificWindowIdentity else {
+            return allowFallbackWindow ? appWindows.first : nil
+        }
+
         if let focusedFrame = focusedWindowHint.frame,
            let closestWindow = closestFrameMatch(to: focusedFrame, in: appWindows),
            frameDistance(closestWindow.frame, focusedFrame) <= focusedWindowFrameTolerance {
@@ -224,7 +230,7 @@ class ScreenCaptureService: ObservableObject {
             return titledWindow
         }
 
-        return appWindows.first
+        return allowFallbackWindow ? appWindows.first : nil
     }
 
     private nonisolated static func closestFrameMatch(to frame: CGRect, in windows: [SCWindow]) -> SCWindow? {

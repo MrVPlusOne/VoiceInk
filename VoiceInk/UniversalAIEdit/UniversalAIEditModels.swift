@@ -346,16 +346,6 @@ enum UniversalAIEditFlow {
         !panelIsVisible
     }
 
-    static func shouldStartVoiceInstructionAfterContextCapture(
-        requested: Bool,
-        instruction: String,
-        panelIsVisible: Bool
-    ) -> Bool {
-        requested &&
-            panelIsVisible &&
-            instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
     static func shouldShowPreview(hasGeneratedText: Bool) -> Bool {
         hasGeneratedText
     }
@@ -421,6 +411,44 @@ enum UniversalAIEditFlow {
         }
 
         return .closePanel
+    }
+
+    static func hasCapturedScreenContext(_ context: UniversalAIEditContext) -> Bool {
+        context.screenshotContext != nil ||
+            context.screenText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    static func hasResolvedScreenContext(_ context: UniversalAIEditContext) -> Bool {
+        hasCapturedScreenContext(context) ||
+            context.diagnostics.contains { diagnostic in
+                switch diagnostic {
+                case .screenContextDisabled,
+                     .screenRecordingPermissionMissing,
+                     .screenCaptureFailed,
+                     .screenTextUnavailable:
+                    return true
+                case .accessibilityPermissionMissing,
+                     .selectedTextUnavailable,
+                     .selectedTextCaptureFailed,
+                     .screenshotContextUnsupported,
+                     .screenshotContextUnavailable:
+                    return false
+                }
+            }
+    }
+
+    static func needsScreenContextCapture(_ context: UniversalAIEditContext) -> Bool {
+        !hasResolvedScreenContext(context)
+    }
+
+    static func screenContextSourceDescription(for target: UniversalAIEditTargetSnapshot) -> String {
+        let appName = target.displayName
+        guard let windowTitle = target.focusedWindowTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !windowTitle.isEmpty else {
+            return String(format: String(localized: "%@ window"), appName)
+        }
+
+        return "\(appName): \(windowTitle)"
     }
 
     private static let supportedFocusedInputRoles: Set<String> = [

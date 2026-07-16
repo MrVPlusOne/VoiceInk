@@ -85,6 +85,16 @@ final class UniversalAIEditManager: ObservableObject {
         UniversalAIEditFlow.canToggleMode(phase: phase) && hasEditableSelection
     }
 
+    var hasPendingScreenContext: Bool {
+        guard let context else { return false }
+        return UniversalAIEditFlow.needsScreenContextCapture(context)
+    }
+
+    var pendingScreenContextSourceDescription: String? {
+        guard let context else { return nil }
+        return UniversalAIEditFlow.screenContextSourceDescription(for: context.target)
+    }
+
     var canInteractWithModePicker: Bool {
         UniversalAIEditFlow.canToggleMode(phase: phase)
     }
@@ -398,21 +408,37 @@ final class UniversalAIEditManager: ObservableObject {
         activeGenerationID = generationID
         let requestInstruction = instruction
         let requestMode = mode
-        let requestContext = context
-        let requestInputSnapshot = UniversalAIEditInputSnapshot(
-            instruction: requestInstruction,
-            mode: requestMode,
-            context: requestContext
-        )
+        let initialContext = context
         generatedInputSnapshot = nil
-        phase = .generating
-        statusText = String(localized: "Generating...")
+        if UniversalAIEditFlow.needsScreenContextCapture(initialContext) {
+            phase = .capturing
+            statusText = String(localized: "Capturing screen context...")
+        } else {
+            phase = .generating
+            statusText = String(localized: "Generating...")
+        }
 
         Task { @MainActor in
             guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
                 return
             }
             do {
+                let configuration = resolvedEnhancementConfiguration(engine: engine)
+                let requestContext = await ensureRequestScreenContext(
+                    for: initialContext,
+                    configuration: configuration,
+                    sessionID: panelSessionID
+                )
+                guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
+                    return
+                }
+                let requestInputSnapshot = UniversalAIEditInputSnapshot(
+                    instruction: requestInstruction,
+                    mode: requestMode,
+                    context: requestContext
+                )
+                phase = .generating
+                statusText = String(localized: "Generating...")
                 let result = try await editService.generate(
                     instruction: requestInstruction,
                     mode: requestMode,
@@ -646,7 +672,8 @@ final class UniversalAIEditManager: ObservableObject {
         activeGenerationID = nil
         instruction = ""
         let configuration = resolvedEnhancementConfiguration(engine: engine)
-        let launchContext = await contextCaptureService.captureLaunchContext(configuration: configuration)
+        let capturedLaunchContext = await contextCaptureService.captureLaunchContext(configuration: configuration)
+        let launchContext = launchDisplayContext(capturedLaunchContext, configuration: configuration)
         context = launchContext
         mode = launchContext.mode
         targetApp = launchContext.target.processIdentifier.flatMap { pid in
@@ -656,16 +683,51 @@ final class UniversalAIEditManager: ObservableObject {
         Self.logger.info(
             "AI Edit panel shown after launch context elapsedMs=\(self.elapsedMilliseconds(since: launchStart), privacy: .public) hasSelection=\(launchContext.selectedText != nil, privacy: .public)"
         )
-        statusText = contextCaptureStatusText(for: launchContext, configuration: configuration)
-
-        let sessionID = panelSessionID
-        let completedContext = await contextCaptureService.captureDeferredScreenContext(
-            for: launchContext,
-            configuration: configuration
+        statusText = nil
+        phase = .ready
+        Self.logger.info(
+            "AI Edit ready after launch-critical context elapsedMs=\(self.elapsedMilliseconds(since: launchStart), privacy: .public) pendingScreenContext=\(self.hasPendingScreenContext, privacy: .public)"
         )
+        if startVoiceRecording,
+           instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           panel?.isVisible == true {
+            await startVoiceInstruction()
+        }
+    }
+
+    private func launchDisplayContext(
+        _ context: UniversalAIEditContext,
+        configuration: EnhancementRuntimeConfiguration?
+    ) -> UniversalAIEditContext {
+        guard configuration?.useScreenCaptureContext != true else {
+            return context
+        }
+
+        return contextCaptureService.contextWithScreenContextDisabled(context)
+    }
+
+    private func ensureRequestScreenContext(
+        for initialContext: UniversalAIEditContext,
+        configuration: EnhancementRuntimeConfiguration?,
+        sessionID: UUID?
+    ) async -> UniversalAIEditContext {
+        guard UniversalAIEditFlow.needsScreenContextCapture(initialContext) else {
+            return initialContext
+        }
+
+        let completedContext: UniversalAIEditContext
+        if configuration?.useScreenCaptureContext == true {
+            completedContext = await contextCaptureService.captureDeferredScreenContext(
+                for: initialContext,
+                configuration: configuration
+            )
+        } else {
+            completedContext = contextCaptureService.contextWithScreenContextDisabled(initialContext)
+        }
+
         guard panelSessionID == sessionID,
               panel?.isVisible == true else {
-            return
+            return completedContext
         }
 
         context = completedContext
@@ -673,31 +735,7 @@ final class UniversalAIEditManager: ObservableObject {
         targetApp = completedContext.target.processIdentifier.flatMap { pid in
             NSRunningApplication(processIdentifier: pid)
         }
-        statusText = nil
-        phase = .ready
-        Self.logger.info(
-            "AI Edit context ready elapsedMs=\(self.elapsedMilliseconds(since: launchStart), privacy: .public) hasScreenText=\(completedContext.screenText != nil, privacy: .public) hasScreenshot=\(completedContext.screenshotContext != nil, privacy: .public)"
-        )
-        if UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
-            requested: startVoiceRecording,
-            instruction: instruction,
-            panelIsVisible: panel?.isVisible == true
-        ) {
-            await startVoiceInstruction()
-        }
-    }
-
-    private func contextCaptureStatusText(
-        for context: UniversalAIEditContext,
-        configuration: EnhancementRuntimeConfiguration?
-    ) -> String {
-        if configuration?.useScreenCaptureContext == true {
-            return String(localized: "Capturing screen context...")
-        }
-
-        return context.selectedText == nil
-            ? String(localized: "Finishing capture...")
-            : String(localized: "Preparing AI Edit...")
+        return completedContext
     }
 
     private func resolvedEnhancementConfiguration(engine: VoiceInkEngine) -> EnhancementRuntimeConfiguration? {
@@ -783,8 +821,6 @@ final class UniversalAIEditManager: ObservableObject {
             return
         }
 
-        phase = .transcribingInstruction
-        statusText = String(localized: "Transcribing instruction...")
         do {
             guard let transcriptionConfiguration = ModeRuntimeResolver.transcriptionConfiguration(
                 transcriptionModelManager: engine.transcriptionModelManager
@@ -793,10 +829,32 @@ final class UniversalAIEditManager: ObservableObject {
             }
 
             let enhancementConfiguration = resolvedEnhancementConfiguration(engine: engine)
+            let sessionID = panelSessionID
+            let screenReadyContext: UniversalAIEditContext?
+            if let currentContext = context {
+                if UniversalAIEditFlow.needsScreenContextCapture(currentContext) {
+                    phase = .capturing
+                    statusText = String(localized: "Capturing screen context...")
+                }
+                screenReadyContext = await ensureRequestScreenContext(
+                    for: currentContext,
+                    configuration: enhancementConfiguration,
+                    sessionID: sessionID
+                )
+                guard panelSessionID == sessionID,
+                      panel?.isVisible == true else {
+                    return
+                }
+            } else {
+                screenReadyContext = nil
+            }
+
+            phase = .transcribingInstruction
+            statusText = String(localized: "Transcribing instruction...")
             let recognitionSnapshot = RecordingContextSnapshot(
-                selectedText: context?.selectedText,
-                clipboardText: context?.clipboardText,
-                screenText: context?.screenText
+                selectedText: screenReadyContext?.selectedText,
+                clipboardText: screenReadyContext?.clipboardText,
+                screenText: screenReadyContext?.screenText
             )
             let requestContext = TranscriptionRequestContext(
                 language: transcriptionConfiguration.language,

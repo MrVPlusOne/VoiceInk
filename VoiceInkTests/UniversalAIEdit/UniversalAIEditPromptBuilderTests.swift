@@ -572,27 +572,38 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionOnOpen(panelIsVisible: true))
     }
 
-    @Test func aiEditDeferredContextOnlyStartsVoiceForUnmodifiedVisiblePanel() {
-        #expect(UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
-            requested: true,
-            instruction: "",
-            panelIsVisible: true
-        ))
-        #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
-            requested: false,
-            instruction: "",
-            panelIsVisible: true
-        ))
-        #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
-            requested: true,
-            instruction: "Manual instruction",
-            panelIsVisible: true
-        ))
-        #expect(!UniversalAIEditFlow.shouldStartVoiceInstructionAfterContextCapture(
-            requested: true,
-            instruction: "",
-            panelIsVisible: false
-        ))
+    @Test func screenContextRemainsPendingUntilCaptureOrTerminalFallback() {
+        let target = UniversalAIEditTargetSnapshot(
+            appName: "Mail",
+            bundleIdentifier: "com.apple.mail",
+            processIdentifier: 42,
+            focusedWindowTitle: "Reply",
+            focusedWindowFrame: CGRect(x: 10, y: 20, width: 400, height: 300)
+        )
+        func context(
+            screenText: String? = nil,
+            screenshotContext: UniversalAIEditScreenshotContext? = nil,
+            diagnostics: [UniversalAIEditCaptureDiagnostic] = []
+        ) -> UniversalAIEditContext {
+            UniversalAIEditContext(
+                capturedAt: Date(timeIntervalSince1970: 0),
+                target: target,
+                selectedText: "Draft",
+                clipboardText: nil,
+                screenText: screenText,
+                screenshotContext: screenshotContext,
+                diagnostics: diagnostics
+            )
+        }
+
+        #expect(UniversalAIEditFlow.needsScreenContextCapture(context()))
+        #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(screenText: "Application: Mail")))
+        #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenContextDisabled])))
+        #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenRecordingPermissionMissing])))
+        #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenCaptureFailed])))
+        #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenTextUnavailable])))
+        #expect(UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenshotContextUnsupported])))
+        #expect(UniversalAIEditFlow.screenContextSourceDescription(for: target) == "Mail: Reply")
     }
 
     @Test func focusedInputSnapshotsStillSupportApplySafety() {

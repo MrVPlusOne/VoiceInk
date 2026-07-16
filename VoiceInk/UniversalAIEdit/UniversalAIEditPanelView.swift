@@ -216,6 +216,9 @@ struct UniversalAIEditPanelView: View {
             parts.append(String(localized: "screenshot context"))
         } else if manager.context?.screenText?.isEmpty == false {
             parts.append(String(localized: "screen context"))
+        } else if manager.hasPendingScreenContext,
+                  let source = manager.pendingScreenContextSourceDescription {
+            parts.append(String(format: String(localized: "%@ context source"), source))
         }
 
         if manager.context?.clipboardText?.isEmpty == false {
@@ -244,8 +247,9 @@ struct UniversalAIEditPanelView: View {
     }
 
     private var screenChipTitle: String {
-        if screenContextCapturePending {
-            return String(localized: "Capturing screen")
+        if manager.hasPendingScreenContext,
+           let source = manager.pendingScreenContextSourceDescription {
+            return String(format: String(localized: "Will use %@"), source)
         }
         if diagnostics.contains(.screenContextDisabled) {
             return String(localized: "Screen off")
@@ -272,25 +276,6 @@ struct UniversalAIEditPanelView: View {
             return String(localized: "Screen context")
         }
         return String(localized: "No screen context")
-    }
-
-    private var screenContextCapturePending: Bool {
-        guard manager.phase == .capturing,
-              manager.context != nil,
-              manager.context?.screenText == nil,
-              manager.context?.screenshotContext == nil else {
-            return false
-        }
-
-        let resolvedDiagnostics: [UniversalAIEditCaptureDiagnostic] = [
-            .screenContextDisabled,
-            .screenRecordingPermissionMissing,
-            .screenCaptureFailed,
-            .screenTextUnavailable,
-            .screenshotContextUnsupported,
-            .screenshotContextUnavailable
-        ]
-        return !diagnostics.contains { resolvedDiagnostics.contains($0) }
     }
 
     private var screenContextInspectorSubtitle: String {
@@ -365,7 +350,7 @@ struct UniversalAIEditPanelView: View {
 
     @ViewBuilder
     private var screenContextChip: some View {
-        if liveScreenContextInspectionText != nil {
+        if liveScreenContextInspectionText != nil || liveScreenshotContextData != nil {
             Button {
                 isScreenContextInspectorPresented = true
             } label: {
