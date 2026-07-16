@@ -295,9 +295,9 @@ struct UniversalAIEditPanelView: View {
 
     private var screenContextInspectorSubtitle: String {
         if let targetName = manager.context?.target.displayName {
-            return String(localized: "Captured from \(targetName) before this panel opened")
+            return String(localized: "Captured from the \(targetName) window targeted by AI Edit")
         }
-        return String(localized: "Captured before this panel opened")
+        return String(localized: "Captured from the window targeted by AI Edit")
     }
 
     private var liveScreenContextInspectionText: String? {
