@@ -165,6 +165,20 @@ final class UniversalAIEditContextCaptureService {
         )
     }
 
+    func contextWithScreenContextTimedOut(_ context: UniversalAIEditContext) -> UniversalAIEditContext {
+        UniversalAIEditContext(
+            capturedAt: context.capturedAt,
+            target: context.target,
+            selectedText: context.selectedText,
+            editTargetSource: context.editTargetSource,
+            focusedInput: context.focusedInput,
+            clipboardText: context.clipboardText,
+            screenText: context.screenText,
+            screenshotContext: context.screenshotContext,
+            diagnostics: context.diagnostics.mergingUnique([.screenContextTimedOut])
+        )
+    }
+
     private func describe(_ result: SelectedTextService.CaptureResult) -> String {
         switch result {
         case .captured(let text):

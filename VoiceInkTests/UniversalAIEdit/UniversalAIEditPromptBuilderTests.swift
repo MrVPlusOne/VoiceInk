@@ -602,8 +602,110 @@ struct UniversalAIEditPromptBuilderTests {
         #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenRecordingPermissionMissing])))
         #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenCaptureFailed])))
         #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenTextUnavailable])))
+        #expect(!UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenContextTimedOut])))
         #expect(UniversalAIEditFlow.needsScreenContextCapture(context(diagnostics: [.screenshotContextUnsupported])))
         #expect(UniversalAIEditFlow.screenContextSourceDescription(for: target) == "Mail: Reply")
+    }
+
+    @Test func screenContextPrewarmWaitPolicyKeepsVoiceStricterThanGeneration() {
+        let voiceWait = UniversalAIEditFlow.screenContextWaitBudgetNanoseconds(for: .voiceInstruction)
+        let generationWait = UniversalAIEditFlow.screenContextWaitBudgetNanoseconds(for: .generation)
+
+        #expect(voiceWait <= 250_000_000)
+        #expect(generationWait > voiceWait)
+        #expect(generationWait <= 1_000_000_000)
+        #expect(UniversalAIEditFlow.shouldKeepScreenContextPrewarmAfterTimeout(for: .voiceInstruction))
+        #expect(!UniversalAIEditFlow.shouldKeepScreenContextPrewarmAfterTimeout(for: .generation))
+    }
+
+    @Test func prewarmedScreenContextAppliesOnlyToVisibleSameSession() {
+        let sessionID = UUID()
+        let otherSessionID = UUID()
+
+        #expect(UniversalAIEditFlow.shouldApplyPrewarmedScreenContext(
+            currentSessionID: sessionID,
+            prewarmSessionID: sessionID,
+            panelIsVisible: true
+        ))
+        #expect(!UniversalAIEditFlow.shouldApplyPrewarmedScreenContext(
+            currentSessionID: otherSessionID,
+            prewarmSessionID: sessionID,
+            panelIsVisible: true
+        ))
+        #expect(!UniversalAIEditFlow.shouldApplyPrewarmedScreenContext(
+            currentSessionID: sessionID,
+            prewarmSessionID: sessionID,
+            panelIsVisible: false
+        ))
+        #expect(!UniversalAIEditFlow.shouldApplyPrewarmedScreenContext(
+            currentSessionID: nil,
+            prewarmSessionID: sessionID,
+            panelIsVisible: true
+        ))
+    }
+
+    @Test func latePrewarmCompletionAfterTerminalTimeoutIsIgnored() async {
+        let sessionID = UUID()
+        let prewarmID = UUID()
+        let lateCompletion = Task {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            return prewarmID
+        }
+
+        let completionPrewarmID = await lateCompletion.value
+
+        #expect(!UniversalAIEditFlow.shouldApplyPrewarmedScreenContextCompletion(
+            currentPrewarmID: nil,
+            completionPrewarmID: completionPrewarmID,
+            currentSessionID: sessionID,
+            prewarmSessionID: sessionID,
+            panelIsVisible: true,
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func latePrewarmCompletionAppliesOnlyWhileStillCurrent() async {
+        let sessionID = UUID()
+        let prewarmID = UUID()
+        let lateCompletion = Task {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            return prewarmID
+        }
+
+        let completionPrewarmID = await lateCompletion.value
+
+        #expect(UniversalAIEditFlow.shouldApplyPrewarmedScreenContextCompletion(
+            currentPrewarmID: prewarmID,
+            completionPrewarmID: completionPrewarmID,
+            currentSessionID: sessionID,
+            prewarmSessionID: sessionID,
+            panelIsVisible: true,
+            taskIsCancelled: false
+        ))
+        #expect(!UniversalAIEditFlow.shouldApplyPrewarmedScreenContextCompletion(
+            currentPrewarmID: UUID(),
+            completionPrewarmID: completionPrewarmID,
+            currentSessionID: sessionID,
+            prewarmSessionID: sessionID,
+            panelIsVisible: true,
+            taskIsCancelled: false
+        ))
+        #expect(!UniversalAIEditFlow.shouldApplyPrewarmedScreenContextCompletion(
+            currentPrewarmID: prewarmID,
+            completionPrewarmID: completionPrewarmID,
+            currentSessionID: UUID(),
+            prewarmSessionID: sessionID,
+            panelIsVisible: true,
+            taskIsCancelled: false
+        ))
+        #expect(!UniversalAIEditFlow.shouldApplyPrewarmedScreenContextCompletion(
+            currentPrewarmID: prewarmID,
+            completionPrewarmID: completionPrewarmID,
+            currentSessionID: sessionID,
+            prewarmSessionID: sessionID,
+            panelIsVisible: true,
+            taskIsCancelled: true
+        ))
     }
 
     @Test func focusedInputSnapshotsStillSupportApplySafety() {

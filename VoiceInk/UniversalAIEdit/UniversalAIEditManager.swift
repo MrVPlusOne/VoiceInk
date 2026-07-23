@@ -8,6 +8,13 @@ final class UniversalAIEditManager: ObservableObject {
     static let shared = UniversalAIEditManager()
     private static let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "UniversalAIEditLaunch")
 
+    private struct ScreenContextPrewarm {
+        let id: UUID
+        let sessionID: UUID
+        let baseContext: UniversalAIEditContext
+        let task: Task<UniversalAIEditContext, Never>
+    }
+
     @Published private(set) var phase: UniversalAIEditPhase = .idle
     @Published private(set) var context: UniversalAIEditContext?
     @Published var mode: UniversalAIEditMode = .insertNew
@@ -35,6 +42,8 @@ final class UniversalAIEditManager: ObservableObject {
     private var generatedInputSnapshot: UniversalAIEditInputSnapshot?
     private var panelSessionID: UUID?
     private var activeGenerationID: UUID?
+    private var screenContextPrewarm: ScreenContextPrewarm?
+    private var screenContextPrewarmCompletionTask: Task<Void, Never>?
     private var isActivatingPromptTemplateRun = false
     private weak var instructionTextView: NSTextView?
 
@@ -427,7 +436,8 @@ final class UniversalAIEditManager: ObservableObject {
                 let requestContext = await ensureRequestScreenContext(
                     for: initialContext,
                     configuration: configuration,
-                    sessionID: panelSessionID
+                    sessionID: panelSessionID,
+                    source: .generation
                 )
                 guard isCurrentGeneration(sessionID: panelSessionID, generationID: generationID) else {
                     return
@@ -668,7 +678,9 @@ final class UniversalAIEditManager: ObservableObject {
         lastResult = nil
         generatedInputSnapshot = nil
         currentHistoryRecord = nil
-        panelSessionID = UUID()
+        cancelScreenContextPrewarm()
+        let sessionID = UUID()
+        panelSessionID = sessionID
         activeGenerationID = nil
         instruction = ""
         let configuration = resolvedEnhancementConfiguration(engine: engine)
@@ -687,6 +699,11 @@ final class UniversalAIEditManager: ObservableObject {
         phase = .ready
         Self.logger.info(
             "AI Edit ready after launch-critical context elapsedMs=\(self.elapsedMilliseconds(since: launchStart), privacy: .public) pendingScreenContext=\(self.hasPendingScreenContext, privacy: .public)"
+        )
+        startScreenContextPrewarmIfNeeded(
+            for: launchContext,
+            configuration: configuration,
+            sessionID: sessionID
         )
         if startVoiceRecording,
            instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -709,25 +726,173 @@ final class UniversalAIEditManager: ObservableObject {
     private func ensureRequestScreenContext(
         for initialContext: UniversalAIEditContext,
         configuration: EnhancementRuntimeConfiguration?,
-        sessionID: UUID?
+        sessionID: UUID?,
+        source: UniversalAIEditScreenContextRequestSource
     ) async -> UniversalAIEditContext {
         guard UniversalAIEditFlow.needsScreenContextCapture(initialContext) else {
             return initialContext
         }
-
-        let completedContext: UniversalAIEditContext
-        if configuration?.useScreenCaptureContext == true {
-            completedContext = await contextCaptureService.captureDeferredScreenContext(
-                for: initialContext,
-                configuration: configuration
-            )
-        } else {
-            completedContext = contextCaptureService.contextWithScreenContextDisabled(initialContext)
+        guard let sessionID else {
+            return initialContext
         }
 
-        guard panelSessionID == sessionID,
-              panel?.isVisible == true else {
-            return completedContext
+        if let visibleContext = currentCompletedScreenContext(matching: initialContext) {
+            return visibleContext
+        }
+
+        guard configuration?.useScreenCaptureContext == true else {
+            let disabledContext = contextCaptureService.contextWithScreenContextDisabled(initialContext)
+            return applyScreenContextResult(disabledContext, sessionID: sessionID)
+        }
+
+        let prewarm = startOrReuseScreenContextPrewarm(
+            for: initialContext,
+            configuration: configuration,
+            sessionID: sessionID
+        )
+        let timeoutNanoseconds = UniversalAIEditFlow.screenContextWaitBudgetNanoseconds(for: source)
+        if let completedContext = await awaitPrewarmedScreenContext(
+            prewarm.task,
+            timeoutNanoseconds: timeoutNanoseconds
+        ) {
+            return applyScreenContextResult(completedContext, sessionID: sessionID)
+        }
+
+        Self.logger.info(
+            "AI Edit saved-target screen context prewarm not ready source=\(String(describing: source), privacy: .public) waitMs=\(Int(timeoutNanoseconds / 1_000_000), privacy: .public)"
+        )
+
+        guard !UniversalAIEditFlow.shouldKeepScreenContextPrewarmAfterTimeout(for: source) else {
+            return initialContext
+        }
+
+        cancelScreenContextPrewarm(matching: prewarm)
+        let fallbackContext = contextCaptureService.contextWithScreenContextTimedOut(initialContext)
+        return applyScreenContextResult(fallbackContext, sessionID: sessionID)
+    }
+
+    private func currentCompletedScreenContext(
+        matching initialContext: UniversalAIEditContext
+    ) -> UniversalAIEditContext? {
+        guard let context,
+              context.target == initialContext.target,
+              context.selectedText == initialContext.selectedText,
+              context.editTargetSource == initialContext.editTargetSource,
+              context.focusedInput == initialContext.focusedInput,
+              context.clipboardText == initialContext.clipboardText,
+              !UniversalAIEditFlow.needsScreenContextCapture(context) else {
+            return nil
+        }
+
+        return context
+    }
+
+    private func startScreenContextPrewarmIfNeeded(
+        for context: UniversalAIEditContext,
+        configuration: EnhancementRuntimeConfiguration?,
+        sessionID: UUID
+    ) {
+        guard UniversalAIEditFlow.needsScreenContextCapture(context),
+              configuration?.useScreenCaptureContext == true else {
+            return
+        }
+
+        _ = startOrReuseScreenContextPrewarm(
+            for: context,
+            configuration: configuration,
+            sessionID: sessionID
+        )
+    }
+
+    private func startOrReuseScreenContextPrewarm(
+        for context: UniversalAIEditContext,
+        configuration: EnhancementRuntimeConfiguration?,
+        sessionID: UUID
+    ) -> ScreenContextPrewarm {
+        if let screenContextPrewarm,
+           screenContextPrewarm.sessionID == sessionID,
+           screenContextPrewarm.baseContext == context {
+            return screenContextPrewarm
+        }
+
+        cancelScreenContextPrewarm()
+        let prewarmID = UUID()
+        let task = Task { @MainActor [contextCaptureService] in
+            await contextCaptureService.captureDeferredScreenContext(
+                for: context,
+                configuration: configuration
+            )
+        }
+        let prewarm = ScreenContextPrewarm(
+            id: prewarmID,
+            sessionID: sessionID,
+            baseContext: context,
+            task: task
+        )
+        screenContextPrewarm = prewarm
+        screenContextPrewarmCompletionTask = Task { @MainActor [weak self, task] in
+            let completedContext = await task.value
+            guard !Task.isCancelled else { return }
+            self?.applyScreenContextResult(
+                completedContext,
+                sessionID: sessionID,
+                prewarmID: prewarmID
+            )
+        }
+        Self.logger.info("AI Edit saved-target screen context prewarm started")
+        return prewarm
+    }
+
+    private func awaitPrewarmedScreenContext(
+        _ task: Task<UniversalAIEditContext, Never>,
+        timeoutNanoseconds: UInt64
+    ) async -> UniversalAIEditContext? {
+        guard timeoutNanoseconds > 0 else { return nil }
+
+        return await withCheckedContinuation { continuation in
+            var didResume = false
+            let resumeOnce: (UniversalAIEditContext?) -> Void = { value in
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(returning: value)
+            }
+
+            Task { @MainActor in
+                let completedContext = await task.value
+                resumeOnce(completedContext)
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                resumeOnce(nil)
+            }
+        }
+    }
+
+    @discardableResult
+    private func applyScreenContextResult(
+        _ completedContext: UniversalAIEditContext,
+        sessionID: UUID,
+        prewarmID: UUID? = nil
+    ) -> UniversalAIEditContext {
+        if let prewarmID {
+            guard UniversalAIEditFlow.shouldApplyPrewarmedScreenContextCompletion(
+                currentPrewarmID: screenContextPrewarm?.id,
+                completionPrewarmID: prewarmID,
+                currentSessionID: panelSessionID,
+                prewarmSessionID: sessionID,
+                panelIsVisible: panel?.isVisible == true,
+                taskIsCancelled: Task.isCancelled
+            ) else {
+                return completedContext
+            }
+        } else {
+            guard UniversalAIEditFlow.shouldApplyPrewarmedScreenContext(
+                currentSessionID: panelSessionID,
+                prewarmSessionID: sessionID,
+                panelIsVisible: panel?.isVisible == true
+            ) else {
+                return completedContext
+            }
         }
 
         context = completedContext
@@ -735,7 +900,31 @@ final class UniversalAIEditManager: ObservableObject {
         targetApp = completedContext.target.processIdentifier.flatMap { pid in
             NSRunningApplication(processIdentifier: pid)
         }
+        clearScreenContextPrewarm(matchingSessionID: sessionID)
         return completedContext
+    }
+
+    private func cancelScreenContextPrewarm(matching prewarm: ScreenContextPrewarm? = nil) {
+        if let prewarm {
+            guard let screenContextPrewarm,
+                  screenContextPrewarm.id == prewarm.id,
+                  screenContextPrewarm.sessionID == prewarm.sessionID,
+                  screenContextPrewarm.baseContext == prewarm.baseContext else {
+                return
+            }
+        }
+
+        screenContextPrewarm?.task.cancel()
+        screenContextPrewarmCompletionTask?.cancel()
+        screenContextPrewarm = nil
+        screenContextPrewarmCompletionTask = nil
+    }
+
+    private func clearScreenContextPrewarm(matchingSessionID sessionID: UUID) {
+        guard screenContextPrewarm?.sessionID == sessionID else { return }
+        screenContextPrewarmCompletionTask?.cancel()
+        screenContextPrewarm = nil
+        screenContextPrewarmCompletionTask = nil
     }
 
     private func resolvedEnhancementConfiguration(engine: VoiceInkEngine) -> EnhancementRuntimeConfiguration? {
@@ -771,6 +960,7 @@ final class UniversalAIEditManager: ObservableObject {
         hostingController = nil
         panelSessionID = nil
         activeGenerationID = nil
+        cancelScreenContextPrewarm()
         if reactivateTarget {
             targetApp?.activate(options: [])
         }
@@ -839,7 +1029,8 @@ final class UniversalAIEditManager: ObservableObject {
                 screenReadyContext = await ensureRequestScreenContext(
                     for: currentContext,
                     configuration: enhancementConfiguration,
-                    sessionID: sessionID
+                    sessionID: sessionID,
+                    source: .voiceInstruction
                 )
                 guard panelSessionID == sessionID,
                       panel?.isVisible == true else {

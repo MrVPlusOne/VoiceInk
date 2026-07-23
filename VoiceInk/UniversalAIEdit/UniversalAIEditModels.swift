@@ -89,6 +89,11 @@ enum UniversalAIEditEscapeAction: Equatable {
     case ignore
 }
 
+enum UniversalAIEditScreenContextRequestSource: Equatable {
+    case voiceInstruction
+    case generation
+}
+
 enum UniversalAIEditEditTargetSource: Equatable {
     case explicitSelection
     case focusedInput
@@ -425,7 +430,8 @@ enum UniversalAIEditFlow {
                 case .screenContextDisabled,
                      .screenRecordingPermissionMissing,
                      .screenCaptureFailed,
-                     .screenTextUnavailable:
+                     .screenTextUnavailable,
+                     .screenContextTimedOut:
                     return true
                 case .accessibilityPermissionMissing,
                      .selectedTextUnavailable,
@@ -449,6 +455,53 @@ enum UniversalAIEditFlow {
         }
 
         return "\(appName): \(windowTitle)"
+    }
+
+    static func screenContextWaitBudgetNanoseconds(
+        for source: UniversalAIEditScreenContextRequestSource
+    ) -> UInt64 {
+        switch source {
+        case .voiceInstruction:
+            return 150_000_000
+        case .generation:
+            return 750_000_000
+        }
+    }
+
+    static func shouldKeepScreenContextPrewarmAfterTimeout(
+        for source: UniversalAIEditScreenContextRequestSource
+    ) -> Bool {
+        switch source {
+        case .voiceInstruction:
+            return true
+        case .generation:
+            return false
+        }
+    }
+
+    static func shouldApplyPrewarmedScreenContext(
+        currentSessionID: UUID?,
+        prewarmSessionID: UUID,
+        panelIsVisible: Bool
+    ) -> Bool {
+        currentSessionID == prewarmSessionID && panelIsVisible
+    }
+
+    static func shouldApplyPrewarmedScreenContextCompletion(
+        currentPrewarmID: UUID?,
+        completionPrewarmID: UUID,
+        currentSessionID: UUID?,
+        prewarmSessionID: UUID,
+        panelIsVisible: Bool,
+        taskIsCancelled: Bool
+    ) -> Bool {
+        !taskIsCancelled &&
+            currentPrewarmID == completionPrewarmID &&
+            shouldApplyPrewarmedScreenContext(
+                currentSessionID: currentSessionID,
+                prewarmSessionID: prewarmSessionID,
+                panelIsVisible: panelIsVisible
+            )
     }
 
     private static let supportedFocusedInputRoles: Set<String> = [
@@ -554,6 +607,7 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
     case screenRecordingPermissionMissing
     case screenCaptureFailed
     case screenTextUnavailable
+    case screenContextTimedOut
     case screenshotContextUnsupported
     case screenshotContextUnavailable
 
@@ -575,6 +629,8 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
             return String(localized: "Screen capture failed")
         case .screenTextUnavailable:
             return String(localized: "No screen text detected")
+        case .screenContextTimedOut:
+            return String(localized: "Screen context skipped")
         case .screenshotContextUnsupported:
             return String(localized: "Screenshot context unavailable")
         case .screenshotContextUnavailable:
@@ -598,6 +654,8 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
             return String(localized: "VoiceInk could not capture the active window for context.")
         case .screenTextUnavailable:
             return String(localized: "The active window was captured, but OCR did not find text.")
+        case .screenContextTimedOut:
+            return String(localized: "VoiceInk skipped screen context to keep AI Edit responsive.")
         case .screenshotContextUnsupported:
             return String(localized: "The selected AI Edit model does not support screenshot context, so VoiceInk used OCR screen text instead.")
         case .screenshotContextUnavailable:
@@ -621,6 +679,8 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
             return "camera.metering.unknown"
         case .screenTextUnavailable:
             return "text.viewfinder"
+        case .screenContextTimedOut:
+            return "timer"
         case .screenshotContextUnsupported:
             return "photo.badge.exclamationmark"
         case .screenshotContextUnavailable:
@@ -630,7 +690,7 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
 
     var isWarning: Bool {
         switch self {
-        case .accessibilityPermissionMissing, .selectedTextCaptureFailed, .screenRecordingPermissionMissing, .screenCaptureFailed, .screenshotContextUnsupported, .screenshotContextUnavailable:
+        case .accessibilityPermissionMissing, .selectedTextCaptureFailed, .screenRecordingPermissionMissing, .screenCaptureFailed, .screenContextTimedOut, .screenshotContextUnsupported, .screenshotContextUnavailable:
             return true
         case .selectedTextUnavailable, .screenContextDisabled, .screenTextUnavailable:
             return false
@@ -643,7 +703,7 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
             return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
         case .screenRecordingPermissionMissing:
             return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        case .selectedTextUnavailable, .selectedTextCaptureFailed, .screenContextDisabled, .screenCaptureFailed, .screenTextUnavailable, .screenshotContextUnsupported, .screenshotContextUnavailable:
+        case .selectedTextUnavailable, .selectedTextCaptureFailed, .screenContextDisabled, .screenCaptureFailed, .screenTextUnavailable, .screenContextTimedOut, .screenshotContextUnsupported, .screenshotContextUnavailable:
             return nil
         }
     }
@@ -652,7 +712,7 @@ enum UniversalAIEditCaptureDiagnostic: String, Equatable, Identifiable {
         switch self {
         case .selectedTextUnavailable, .selectedTextCaptureFailed:
             return true
-        case .accessibilityPermissionMissing, .screenContextDisabled, .screenRecordingPermissionMissing, .screenCaptureFailed, .screenTextUnavailable, .screenshotContextUnsupported, .screenshotContextUnavailable:
+        case .accessibilityPermissionMissing, .screenContextDisabled, .screenRecordingPermissionMissing, .screenCaptureFailed, .screenTextUnavailable, .screenContextTimedOut, .screenshotContextUnsupported, .screenshotContextUnavailable:
             return false
         }
     }
