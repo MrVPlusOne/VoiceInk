@@ -195,10 +195,14 @@ class TranscriptionPipeline {
                         transcription.enhancementDuration = enhancementDuration
                         transcription.aiRequestSystemMessage = enhancementService.lastSystemMessageSent
                         transcription.aiRequestUserMessage = enhancementService.lastUserMessageSent
+                        transcription.recordScreenshotContext(enhancementService.lastScreenshotContextForHistory)
                         finalText = enhancedText
                     } catch {
                         let errorDescription = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                         transcription.enhancedText = String(format: String(localized: "Enhancement failed: %@"), errorDescription)
+                        transcription.aiRequestSystemMessage = enhancementService.lastSystemMessageSent
+                        transcription.aiRequestUserMessage = enhancementService.lastUserMessageSent
+                        transcription.recordScreenshotContext(enhancementService.lastScreenshotContextForHistory)
                         responseError = errorDescription
                         let shortReason = String(errorDescription.prefix(80))
                         await MainActor.run {

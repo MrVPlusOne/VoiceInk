@@ -201,6 +201,72 @@ struct TranscriptionContextRoutingTests {
         #expect(screenshot.redactedMetadata.contains("retained in local AI Edit history/debug storage"))
     }
 
+    @Test func transcriptionHistoryRetainsCompressedScreenshotContext() {
+        let screenshot = screenshotContext()
+        let transcription = Transcription(
+            text: "Original transcript",
+            duration: 1,
+            enhancedText: "Enhanced transcript",
+            screenshotContext: screenshot,
+            screenshotContextStatus: .used
+        )
+
+        #expect(transcription.hasRetainedScreenshotContext)
+        #expect(transcription.screenshotContextData == screenshot.data)
+        #expect(transcription.screenshotContextMediaType == "image/jpeg")
+        #expect(transcription.screenshotContextWidth == 1200)
+        #expect(transcription.screenshotContextHeight == 800)
+        #expect(transcription.screenshotContextByteCount == 4)
+        #expect(transcription.retainedScreenshotContextMetadata?.contains("Status: Screenshot sent to enhancement") == true)
+        #expect(transcription.retainedScreenshotContextMetadata?.contains("Compressed Bytes: 4") == true)
+        #expect(transcription.retainedScreenshotContextMetadata?.contains("Application: Notes") == true)
+        #expect(transcription.retainedScreenshotContextMetadata?.contains("data:image/jpeg;base64") == false)
+    }
+
+    @Test func transcriptionHistoryRecordsScreenshotAttemptFallbackMetadata() {
+        let screenshot = screenshotContext()
+        let transcription = Transcription(
+            text: "Original transcript",
+            duration: 1,
+            enhancedText: "Enhancement failed"
+        )
+        transcription.aiRequestSystemMessage = """
+        # Context
+        <CURRENT_WINDOW_CONTEXT>
+        OCR fallback text
+        </CURRENT_WINDOW_CONTEXT>
+        """
+
+        transcription.recordScreenshotContext(AIEnhancementScreenshotContextHistory(
+            screenshotContext: screenshot,
+            status: .fallback,
+            fallbackReason: "http_status_500"
+        ))
+
+        #expect(transcription.hasRetainedScreenshotContext)
+        #expect(transcription.screenshotContextStatus == .fallback)
+        #expect(transcription.retainedScreenshotContextMetadata?.contains("Screenshot attempted, OCR fallback used") == true)
+        #expect(transcription.retainedScreenshotContextMetadata?.contains("Fallback: http_status_500") == true)
+        #expect(transcription.retainedScreenshotContextMetadata?.contains("raw") == false)
+        #expect(transcription.sentCurrentWindowContext == "OCR fallback text")
+    }
+
+    @Test func clearingScreenshotContextRemovesRetainedHistoryFields() {
+        let transcription = Transcription(
+            text: "Original transcript",
+            duration: 1,
+            screenshotContext: screenshotContext(),
+            screenshotContextStatus: .used
+        )
+
+        transcription.recordScreenshotContext(nil)
+
+        #expect(!transcription.hasRetainedScreenshotContext)
+        #expect(transcription.screenshotContextData == nil)
+        #expect(transcription.screenshotContextStatus == nil)
+        #expect(transcription.retainedScreenshotContextMetadata == nil)
+    }
+
     @Test func customModelBackupPreservesContextCapabilityAndOptInSetting() {
         let model = customModel(supportsContext: true)
         TranscriptionContextModelSettings.setSendContextEnabled(true, for: model)

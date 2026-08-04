@@ -5,14 +5,25 @@ import SwiftUI
 struct TranscriptionInfoPanel: View {
     let transcription: Transcription
 
+    @State private var isScreenshotContextInspectorPresented = false
+
     var body: some View {
         Form {
             detailsSection
+            screenshotContextSection
             aiRequestSection
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $isScreenshotContextInspectorPresented) {
+            AIEditScreenContextInspectorView(
+                contextText: transcription.sentCurrentWindowContext,
+                screenshotData: transcription.screenshotContextData,
+                screenshotMetadata: transcription.retainedScreenshotContextMetadata,
+                subtitle: "Retained with this transcription enhancement"
+            )
+        }
     }
 
     // MARK: - Details Section
@@ -80,6 +91,48 @@ struct TranscriptionInfoPanel: View {
             }
         } header: {
             Text("Details")
+        }
+    }
+
+    // MARK: - Screenshot Context Section
+
+    @ViewBuilder
+    private var screenshotContextSection: some View {
+        if transcription.hasRetainedScreenshotContext {
+            Section {
+                Button {
+                    isScreenshotContextInspectorPresented = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(width: 20, height: 20)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("View Screenshot Context")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.primary)
+                            if let status = transcription.screenshotContextStatus {
+                                Text(status.displayName)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("View retained screenshot context")
+            } header: {
+                Text("Screenshot Context")
+            }
         }
     }
 

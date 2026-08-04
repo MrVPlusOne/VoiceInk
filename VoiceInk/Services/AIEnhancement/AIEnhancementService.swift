@@ -9,6 +9,12 @@ private enum AIEnhancementScreenContextMode {
     case screenshot
 }
 
+struct AIEnhancementScreenshotContextHistory {
+    let screenshotContext: UniversalAIEditScreenshotContext
+    let status: TranscriptionScreenshotContextStatus
+    let fallbackReason: String?
+}
+
 @MainActor
 class AIEnhancementService: ObservableObject {
     private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "AIEnhancementService")
@@ -21,6 +27,7 @@ class AIEnhancementService: ObservableObject {
 
     @Published var lastSystemMessageSent: String?
     @Published var lastUserMessageSent: String?
+    private(set) var lastScreenshotContextForHistory: AIEnhancementScreenshotContextHistory?
 
     var allPrompts: [CustomPrompt] {
         return customPrompts
@@ -225,8 +232,11 @@ class AIEnhancementService: ObservableObject {
         let modelName = configuration.modelName ?? provider.defaultModel
 
         guard !text.isEmpty else {
+            lastScreenshotContextForHistory = nil
             return ""
         }
+
+        lastScreenshotContextForHistory = nil
 
         if let screenshotContext = screenshotContext(
             for: configuration,
@@ -243,6 +253,11 @@ class AIEnhancementService: ObservableObject {
             let screenshotUserMessage = getUserMessage(
                 text: text,
                 screenshotContext: screenshotContext
+            )
+            recordScreenshotContextForHistory(
+                screenshotContext,
+                status: .used,
+                fallbackReason: nil
             )
             recordRequest(systemMessage: screenshotSystemMessage, userMessage: screenshotUserMessage)
 
@@ -267,6 +282,11 @@ class AIEnhancementService: ObservableObject {
                     to: fallbackUserMessage,
                     screenshotContext: screenshotContext,
                     error: error
+                )
+                recordScreenshotContextForHistory(
+                    screenshotContext,
+                    status: .fallback,
+                    fallbackReason: Self.screenshotFallbackReason(for: error)
                 )
                 recordRequest(systemMessage: fallbackSystemMessage, userMessage: loggedFallbackUserMessage)
 
@@ -315,6 +335,18 @@ class AIEnhancementService: ObservableObject {
     private func recordRequest(systemMessage: String, userMessage: String) {
         lastSystemMessageSent = systemMessage
         lastUserMessageSent = userMessage
+    }
+
+    private func recordScreenshotContextForHistory(
+        _ screenshotContext: UniversalAIEditScreenshotContext,
+        status: TranscriptionScreenshotContextStatus,
+        fallbackReason: String?
+    ) {
+        lastScreenshotContextForHistory = AIEnhancementScreenshotContextHistory(
+            screenshotContext: screenshotContext,
+            status: status,
+            fallbackReason: fallbackReason
+        )
     }
 
     private func makeScreenshotRequest(
@@ -459,12 +491,7 @@ class AIEnhancementService: ObservableObject {
         screenshotContext: UniversalAIEditScreenshotContext,
         error: Error
     ) -> String {
-        let fallbackReason: String
-        if let multimodalError = error as? OpenAIMultimodalRequestError {
-            fallbackReason = multimodalError.fallbackMetadataDescription
-        } else {
-            fallbackReason = "screenshot_request_failed"
-        }
+        let fallbackReason = screenshotFallbackReason(for: error)
 
         return """
         \(userMessage)
@@ -475,6 +502,13 @@ class AIEnhancementService: ObservableObject {
         \(screenshotContext.attachmentMetadata)
         </SCREENSHOT_CONTEXT_FALLBACK>
         """
+    }
+
+    private static func screenshotFallbackReason(for error: Error) -> String {
+        if let multimodalError = error as? OpenAIMultimodalRequestError {
+            return multimodalError.fallbackMetadataDescription
+        }
+        return "screenshot_request_failed"
     }
 
     private func apiKey(for provider: AIProvider, modelName: String) throws -> String {
@@ -587,6 +621,7 @@ class AIEnhancementService: ObservableObject {
     ) async throws -> (String, TimeInterval, String?) {
         let startTime = Date()
         let promptName = configuration.prompt?.title
+        lastScreenshotContextForHistory = nil
 
         do {
             let result = try await makeRequestWithRetry(
