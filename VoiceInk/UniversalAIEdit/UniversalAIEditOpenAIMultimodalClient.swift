@@ -1,6 +1,9 @@
 import Foundation
 
-enum UniversalAIEditOpenAIMultimodalClient {
+typealias UniversalAIEditOpenAIMultimodalClient = OpenAIMultimodalChatClient
+typealias UniversalAIEditMultimodalRequestError = OpenAIMultimodalRequestError
+
+enum OpenAIMultimodalChatClient {
     static func chatCompletion(
         baseURL: URL,
         apiKey: String,
@@ -52,29 +55,29 @@ enum UniversalAIEditOpenAIMultimodalClient {
 
         guard JSONSerialization.isValidJSONObject(body),
               let requestBody = try? JSONSerialization.data(withJSONObject: body) else {
-            throw UniversalAIEditMultimodalRequestError.encodingFailed
+            throw OpenAIMultimodalRequestError.encodingFailed
         }
 
         request.httpBody = requestBody
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw UniversalAIEditMultimodalRequestError.network
+            throw OpenAIMultimodalRequestError.network
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw UniversalAIEditMultimodalRequestError.http(statusCode: http.statusCode)
+            throw OpenAIMultimodalRequestError.http(statusCode: http.statusCode)
         }
 
         do {
             let decoded = try JSONDecoder().decode(OpenAIChatResponse.self, from: data)
             return decoded.choices.first?.message.content ?? ""
         } catch {
-            throw UniversalAIEditMultimodalRequestError.decoding
+            throw OpenAIMultimodalRequestError.decoding
         }
     }
 }
 
-enum UniversalAIEditMultimodalRequestError: LocalizedError {
+enum OpenAIMultimodalRequestError: LocalizedError {
     case encodingFailed
     case network
     case http(statusCode: Int)

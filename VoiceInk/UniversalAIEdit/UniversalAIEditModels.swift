@@ -734,9 +734,17 @@ struct UniversalAIEditScreenshotContext: Equatable {
         "data:\(mediaType);base64,\(data.base64EncodedString())"
     }
 
+    var attachmentMetadata: String {
+        metadataDescription(introduction: "Attached screenshot context.")
+    }
+
     var redactedMetadata: String {
+        metadataDescription(introduction: "Attached screenshot retained in local AI Edit history/debug storage.")
+    }
+
+    private func metadataDescription(introduction: String) -> String {
         var lines = [
-            "Attached screenshot retained in local AI Edit history/debug storage.",
+            introduction,
             "Media Type: \(mediaType)",
             "Dimensions: \(width)x\(height)",
             "Source Dimensions: \(sourceWidth)x\(sourceHeight)",
@@ -1142,6 +1150,12 @@ enum UniversalAIEditScreenshotContextSettings {
 }
 
 enum UniversalAIEditScreenshotCapability {
+    static func supportsScreenshotContext(provider: AIProvider, modelName: String) -> Bool {
+        ScreenshotContextCapability.supportsScreenshotContext(provider: provider, modelName: modelName)
+    }
+}
+
+enum ScreenshotContextCapability {
     static func supportsScreenshotContext(provider: AIProvider, modelName: String) -> Bool {
         guard provider == .openAI else { return false }
         return openAIVisionModels.contains(modelName)

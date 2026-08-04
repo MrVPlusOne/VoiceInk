@@ -6,6 +6,7 @@ struct RecordingContextSnapshot {
     var selectedText: String?
     var clipboardText: String?
     var screenText: String?
+    var screenshotContext: UniversalAIEditScreenshotContext?
 }
 
 @MainActor
@@ -22,6 +23,12 @@ final class RecordingContextSnapshotStore {
 
     func updateScreenText(_ text: String?) {
         snapshot.screenText = Self.normalized(text)
+        snapshot.screenshotContext = nil
+    }
+
+    func updateScreenContext(_ context: ActiveWindowCaptureResult?) {
+        snapshot.screenText = Self.normalized(context?.contextText)
+        snapshot.screenshotContext = context?.screenshotContext
     }
 
     private static func normalized(_ text: String?) -> String? {
@@ -33,7 +40,10 @@ final class RecordingContextSnapshotStore {
 
 @MainActor
 enum RecordingContextCaptureService {
-    static func startCapture(into store: RecordingContextSnapshotStore) -> [Task<Void, Never>] {
+    static func startCapture(
+        into store: RecordingContextSnapshotStore,
+        includeScreenshotContext: Bool = false
+    ) -> [Task<Void, Never>] {
         [
             Task { @MainActor in
                 store.updateClipboardText(NSPasteboard.general.string(forType: .string))
@@ -47,10 +57,31 @@ enum RecordingContextCaptureService {
             Task { @MainActor in
                 guard CGPreflightScreenCaptureAccess(), !Task.isCancelled else { return }
                 let screenCaptureService = ScreenCaptureService()
-                let screenText = await screenCaptureService.captureAndExtractText()
+                let context = await screenCaptureService.captureWindowContext(
+                    includeScreenshot: includeScreenshotContext
+                )
                 guard !Task.isCancelled else { return }
-                store.updateScreenText(screenText)
+                store.updateScreenContext(context)
             }
         ]
+    }
+
+    nonisolated static func shouldIncludeScreenshotContext(
+        enhancementConfiguration: EnhancementRuntimeConfiguration?,
+        isEnhancementConfigured: Bool
+    ) -> Bool {
+        guard isEnhancementConfigured,
+              let enhancementConfiguration,
+              enhancementConfiguration.isEnabled,
+              enhancementConfiguration.useScreenCaptureContext,
+              let provider = enhancementConfiguration.provider else {
+            return false
+        }
+
+        let modelName = enhancementConfiguration.modelName ?? provider.defaultModel
+        return ScreenshotContextCapability.supportsScreenshotContext(
+            provider: provider,
+            modelName: modelName
+        )
     }
 }
