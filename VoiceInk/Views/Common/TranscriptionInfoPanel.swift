@@ -1,11 +1,10 @@
+import AppKit
 import SwiftUI
 
 /// Reusable component that displays transcription Details and AI Request sections.
 /// Used in both the inline history side panel and the separate history window's metadata view.
 struct TranscriptionInfoPanel: View {
     let transcription: Transcription
-
-    @State private var isScreenshotContextInspectorPresented = false
 
     var body: some View {
         Form {
@@ -16,14 +15,6 @@ struct TranscriptionInfoPanel: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(isPresented: $isScreenshotContextInspectorPresented) {
-            AIEditScreenContextInspectorView(
-                contextText: transcription.sentCurrentWindowContext,
-                screenshotData: transcription.screenshotContextData,
-                screenshotMetadata: transcription.retainedScreenshotContextMetadata,
-                subtitle: "Retained with this transcription enhancement"
-            )
-        }
     }
 
     // MARK: - Details Section
@@ -101,7 +92,7 @@ struct TranscriptionInfoPanel: View {
         if transcription.hasRetainedScreenshotContext {
             Section {
                 Button {
-                    isScreenshotContextInspectorPresented = true
+                    openRetainedScreenshot()
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "photo")
@@ -110,14 +101,12 @@ struct TranscriptionInfoPanel: View {
                             .frame(width: 20, height: 20)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("View Screenshot Context")
+                            Text("Open Screenshot")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(.primary)
-                            if let status = transcription.screenshotContextStatus {
-                                Text(status.displayName)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
+                            Text("Opens with the default image viewer")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
                         }
 
                         Spacer(minLength: 0)
@@ -129,7 +118,20 @@ struct TranscriptionInfoPanel: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("View retained screenshot context")
+                .help("Open retained screenshot with the default image viewer")
+
+                if let metadata = transcription.retainedScreenshotContextMetadata {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Screenshot Metadata")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Text(metadata)
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .lineSpacing(2)
+                            .textSelection(.enabled)
+                            .foregroundColor(.primary)
+                    }
+                }
             } header: {
                 Text("Screenshot Context")
             }
@@ -189,6 +191,61 @@ struct TranscriptionInfoPanel: View {
             parts.append("User Message:\n\(user)")
         }
         return parts.joined(separator: "\n\n")
+    }
+
+    @MainActor
+    private func openRetainedScreenshot() {
+        guard let data = transcription.screenshotContextData, !data.isEmpty else {
+            NotificationManager.shared.showNotification(
+                title: String(localized: "Screenshot context is unavailable."),
+                type: .error
+            )
+            return
+        }
+
+        do {
+            let url = try writeScreenshotToTemporaryFile(data: data)
+            guard NSWorkspace.shared.open(url) else {
+                NotificationManager.shared.showNotification(
+                    title: String(localized: "Could not open screenshot context."),
+                    type: .error
+                )
+                return
+            }
+        } catch {
+            NotificationManager.shared.showNotification(
+                title: String(localized: "Could not prepare screenshot context."),
+                type: .error
+            )
+        }
+    }
+
+    private func writeScreenshotToTemporaryFile(data: Data) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceInkScreenshotContext", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+
+        let url = directory.appendingPathComponent(
+            "transcription-\(transcription.id.uuidString).\(screenshotFileExtension)"
+        )
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private var screenshotFileExtension: String {
+        switch transcription.screenshotContextMediaType?.lowercased() {
+        case "image/png":
+            return "png"
+        case "image/heic":
+            return "heic"
+        case "image/tiff":
+            return "tiff"
+        default:
+            return "jpg"
+        }
     }
 
     private func metadataRow(icon: String, label: LocalizedStringKey, value: String) -> some View {
