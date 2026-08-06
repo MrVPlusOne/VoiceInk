@@ -18,9 +18,31 @@ struct UniversalAIEditInstructionTranscriptionProcessorTests {
         #expect(cleaned == "replace [TODO] with done, remove (beta) from the title, keep {draft}, and change <code> tags to backticks")
     }
 
-    @Test func instructionTranscriptionUsesDedicatedInstructionEnhancement() {
-        #expect(UniversalAIEditInstructionTranscriptionProcessor.supportsDedicatedInstructionEnhancement)
-        #expect(UniversalAIEditInstructionTranscriptionProcessor.enhancementPrompt.title == "AI Edit instruction cleanup")
+    @Test func directTranscriptFillsEmptyInstructionFieldWithoutPromptEnhancement() {
+        let instruction = UniversalAIEditInstructionTranscriptionProcessor.instructionByAppendingTranscript(
+            "  Make   this shorter.  ",
+            to: ""
+        )
+
+        #expect(instruction == "Make this shorter.")
+    }
+
+    @Test func directTranscriptAppendsToExistingInstructionField() {
+        let instruction = UniversalAIEditInstructionTranscriptionProcessor.instructionByAppendingTranscript(
+            "and keep [TODO] literal",
+            to: "Make this shorter."
+        )
+
+        #expect(instruction == "Make this shorter. and keep [TODO] literal")
+    }
+
+    @Test func emptyTranscriptDoesNotChangeExistingInstructionField() {
+        let instruction = UniversalAIEditInstructionTranscriptionProcessor.instructionByAppendingTranscript(
+            "  \n ",
+            to: "Keep this instruction"
+        )
+
+        #expect(instruction == "Keep this instruction")
     }
 
     @Test func instructionTranscriptionDoesNotApplyWordReplacements() {
@@ -33,33 +55,5 @@ struct UniversalAIEditInstructionTranscriptionProcessorTests {
         #expect(prompt.contains("original spoken language"))
         #expect(prompt.contains("Do not translate unless"))
         #expect(prompt.contains("literal operands"))
-    }
-
-    @Test func enhancementPromptPreservesLanguageAndInstructionOperands() {
-        let prompt = UniversalAIEditInstructionTranscriptionProcessor.enhancementPrompt.promptText
-
-        #expect(prompt.contains("Preserve the original spoken language"))
-        #expect(prompt.contains("do not translate unless"))
-        #expect(prompt.contains("rewrite ambiguous wording as an instruction"))
-        #expect(prompt.contains("square-bracket TODO markers"))
-        #expect(prompt.contains("angle-bracket code names"))
-    }
-
-    @Test func shortInstructionEnhancementFollowsNormalSkipSetting() {
-        #expect(UniversalAIEditInstructionTranscriptionProcessor.shouldSkipEnhancement(
-            text: "润色",
-            isSkipShortEnhancementEnabled: true,
-            wordThreshold: 3
-        ))
-        #expect(!UniversalAIEditInstructionTranscriptionProcessor.shouldSkipEnhancement(
-            text: "润色",
-            isSkipShortEnhancementEnabled: false,
-            wordThreshold: 3
-        ))
-        #expect(!UniversalAIEditInstructionTranscriptionProcessor.shouldSkipEnhancement(
-            text: "Please make this paragraph warmer and shorter.",
-            isSkipShortEnhancementEnabled: true,
-            wordThreshold: 3
-        ))
     }
 }
