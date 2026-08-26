@@ -192,7 +192,7 @@ struct UniversalAIEditPromptBuilderTests {
     }
 
     @Test func userPreferencesRegisteredDefaultIsEmpty() {
-        #expect(AppDefaults.registeredDefaults[UniversalAIEditUserPreferences.userDefaultsKey] as? String == "")
+        #expect(AppDefaults.registeredDefaults[AIUserPreferences.userDefaultsKey] as? String == "")
     }
 
     @Test func screenshotContextRegisteredDefaultIsDisabled() {

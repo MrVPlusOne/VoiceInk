@@ -18,7 +18,7 @@ struct SettingsView: View {
     @AppStorage(PasteMethod.userDefaultsKey) private var pasteMethodRawValue = PasteMethod.standard.rawValue
     @AppStorage(AppAppearancePreference.userDefaultsKey) private var appAppearancePreference = AppAppearancePreference.system
     @AppStorage(AppLanguagePreference.userDefaultsKey) private var appLanguagePreference = AppLanguagePreference.systemValue
-    @AppStorage(UniversalAIEditUserPreferences.userDefaultsKey) private var aiEditUserPreferences = ""
+    @AppStorage(AIUserPreferences.userDefaultsKey) private var userPreferences = ""
     @AppStorage(UniversalAIEditScreenshotContextSettings.userDefaultsKey) private var useAIEditScreenshotContext = false
     @State private var showResetOnboardingAlert = false
     @State private var showLanguageRestartAlert = false
@@ -167,7 +167,7 @@ struct SettingsView: View {
                     Text("User Preferences")
                         .font(.headline)
 
-                    TextEditor(text: $aiEditUserPreferences)
+                    TextEditor(text: $userPreferences)
                         .font(.body)
                         .modelBoundTextInput()
                         .frame(minHeight: 88)
@@ -177,11 +177,11 @@ struct SettingsView: View {
                                 .stroke(Color.secondary.opacity(0.25))
                         )
 
-                    Text("Optional style, tone, and formatting preferences to include in AI Edit prompts.")
+                    Text("Optional style, tone, and formatting preferences for AI-enhanced transcriptions and AI Edit.")
                         .settingsDescription()
                 }
             } header: {
-                Text("AI Edit")
+                Text("AI")
             }
 
             Section("Pasting") {
