@@ -1132,15 +1132,6 @@ struct UniversalAIEditResult: Equatable {
     let screenshotContextForHistory: UniversalAIEditScreenshotContext?
 }
 
-enum UniversalAIEditUserPreferences {
-    static let userDefaultsKey = "UniversalAIEditUserPreferences"
-
-    static func modelBoundText(_ text: String?) -> String? {
-        guard let text else { return nil }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
-    }
-}
-
 enum UniversalAIEditScreenshotContextSettings {
     static let userDefaultsKey = "UniversalAIEditUseScreenshotContext"
 
@@ -1274,8 +1265,8 @@ enum UniversalAIEditPromptBuilder {
             "<USER_INSTRUCTION>\n\(instruction)\n</USER_INSTRUCTION>"
         ]
 
-        if let userPreferences = UniversalAIEditUserPreferences.modelBoundText(userPreferences) {
-            parts.append("<user_preferences>\n\(userPreferences)\n</user_preferences>")
+        if let userPreferences = AIUserPreferences.promptBlock(userPreferences) {
+            parts.append(userPreferences)
         }
 
         if mode == .replaceSelection, let selectedText = modelBoundText(context.selectedText) {

@@ -60,7 +60,7 @@ final class UniversalAIEditService {
             mode: mode,
             context: context,
             customVocabulary: customVocabulary,
-            userPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey),
+            userPreferences: UserDefaults.standard.string(forKey: AIUserPreferences.userDefaultsKey),
             screenContextMode: screenContextMode
         )
 
@@ -97,7 +97,7 @@ final class UniversalAIEditService {
                     mode: mode,
                     context: context,
                     customVocabulary: customVocabulary,
-                    userPreferences: UserDefaults.standard.string(forKey: UniversalAIEditUserPreferences.userDefaultsKey),
+                    userPreferences: UserDefaults.standard.string(forKey: AIUserPreferences.userDefaultsKey),
                     screenContextMode: .ocrText
                 )
                 requestSystemPrompt = fallbackSystemPrompt

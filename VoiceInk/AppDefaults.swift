@@ -53,7 +53,7 @@ enum AppDefaults {
         "ShortEnhancementWordThreshold": 3,
         "EnhancementTimeoutSeconds": 7,
         "EnhancementRetryOnTimeout": true,
-        UniversalAIEditUserPreferences.userDefaultsKey: "",
+        AIUserPreferences.userDefaultsKey: "",
         UniversalAIEditScreenshotContextSettings.userDefaultsKey: false,
         UniversalAIEditPromptTemplateStore.userDefaultsKey: Data(),
 

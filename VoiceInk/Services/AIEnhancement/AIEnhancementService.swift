@@ -193,24 +193,11 @@ class AIEnhancementService: ObservableObject {
         text: String,
         screenshotContext: UniversalAIEditScreenshotContext? = nil
     ) -> String {
-        var parts = [
-            """
-            \n<USER_MESSAGE>
-            \(text)
-            </USER_MESSAGE>
-            """
-        ]
-
-        if let screenshotContext {
-            parts.append("""
-            <ATTACHED_SCREENSHOT_CONTEXT>
-            \(screenshotContext.attachmentMetadata)
-            </ATTACHED_SCREENSHOT_CONTEXT>
-            """)
-        }
-
-        return parts
-            .joined(separator: "\n\n")
+        AIEnhancementPromptBuilder.userMessage(
+            text: text,
+            userPreferences: UserDefaults.standard.string(forKey: AIUserPreferences.userDefaultsKey),
+            screenshotMetadata: screenshotContext?.attachmentMetadata
+        )
     }
 
     private func makeRequest(
