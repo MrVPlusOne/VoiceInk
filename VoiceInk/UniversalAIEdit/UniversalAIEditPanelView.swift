@@ -541,7 +541,27 @@ struct UniversalAIEditPanelView: View {
 
     @ViewBuilder
     private var composerStatusPill: some View {
-        if shouldShowStatus, let status = manager.statusText {
+        if let error = manager.errorPresentation {
+            Button {
+                NotificationManager.shared.showErrorDetails(error)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                    Text(error.title)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppTheme.Status.error)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(AppTheme.Status.error.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "View full error details and recovery steps"))
+            .accessibilityLabel("\(error.title). \(String(localized: "View error details"))")
+        } else if shouldShowStatus, let status = manager.statusText {
             HStack(spacing: 6) {
                 Circle()
                     .fill(statusColor)

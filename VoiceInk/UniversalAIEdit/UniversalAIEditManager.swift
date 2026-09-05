@@ -15,7 +15,13 @@ final class UniversalAIEditManager: ObservableObject {
         let task: Task<UniversalAIEditContext, Never>
     }
 
-    @Published private(set) var phase: UniversalAIEditPhase = .idle
+    @Published private(set) var phase: UniversalAIEditPhase = .idle {
+        didSet {
+            if case .failed = phase { return }
+            errorPresentation = nil
+        }
+    }
+    @Published private(set) var errorPresentation: APIErrorPresentation?
     @Published private(set) var context: UniversalAIEditContext?
     @Published var mode: UniversalAIEditMode = .insertNew
     @Published var instruction = ""
@@ -1087,12 +1093,13 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     private func fail(_ error: Error) {
-        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let presentation = APIErrorPresentation(error: error)
         isVoiceRecording = false
         stopVoiceMetering(reset: true)
-        phase = .failed(message)
-        statusText = message
-        NotificationManager.shared.showNotification(title: message, type: .error, duration: 5.0)
+        phase = .failed(presentation.title)
+        errorPresentation = presentation
+        statusText = presentation.title
+        NotificationManager.shared.showError(presentation)
     }
 
     private func startVoiceMetering() {

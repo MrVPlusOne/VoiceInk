@@ -6,8 +6,45 @@ class NotificationManager {
 
     private var notificationWindow: NSPanel?
     private var dismissTimer: Timer?
+    private var errorDetailsWindow: NSPanel?
 
     private init() {}
+
+    @MainActor
+    func showError(_ error: APIErrorPresentation) {
+        let showDetails = { [weak self] in self?.showErrorDetails(error) }
+        showNotification(
+            title: error.title,
+            type: .error,
+            duration: 8,
+            onTap: { showDetails() },
+            actionButton: (label: String(localized: "Details"), action: { showDetails() })
+        )
+    }
+
+    @MainActor
+    func showErrorDetails(_ error: APIErrorPresentation) {
+        errorDetailsWindow?.close()
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 460),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = String(localized: "VoiceInk — Error details")
+        panel.isReleasedWhenClosed = false
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isFloatingPanel = true
+        panel.contentMinSize = NSSize(width: 460, height: 300)
+        panel.contentViewController = NSHostingController(rootView: ErrorDetailsView(error: error) { [weak panel] in
+            panel?.close()
+        })
+        errorDetailsWindow = panel
+        panel.center()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
 
     @MainActor
     func showNotification(
@@ -116,4 +153,4 @@ class NotificationManager {
 
         })
     }
-} 
+}

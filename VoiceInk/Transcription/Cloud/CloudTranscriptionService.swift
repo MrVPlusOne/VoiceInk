@@ -23,7 +23,8 @@ enum CloudTranscriptionError: Error, LocalizedError {
         case .audioFileNotFound:
             return String(localized: "The audio file to transcribe could not be found.")
         case .apiRequestFailed(let statusCode, let message):
-            return String(format: String(localized: "The API request failed with status code %lld: %@"), Int64(statusCode), message)
+            let presentation = APIErrorPresentation(statusCode: statusCode, responseBody: message)
+            return "\(presentation.title). \(presentation.guidance)"
         case .networkError(let error):
             return String(format: String(localized: "A network error occurred: %@"), error.localizedDescription)
         case .noTranscriptionReturned:
