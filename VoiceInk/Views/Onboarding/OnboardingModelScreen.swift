@@ -6,6 +6,7 @@ struct OnboardingModelScreen: View {
     let setupKind: OnboardingTranscriptionSetupKind
     let providerOptions: [any CloudProvider]
     @Binding var selectedProviderKey: String
+    @Binding var selectedModelName: String
     let isLocalDownloaded: Bool
     let isLocalDownloading: Bool
     let localDownloadStatus: FluidAudioDownloadStatus?
@@ -26,6 +27,7 @@ struct OnboardingModelScreen: View {
                 setupKind: setupKind,
                 providerOptions: providerOptions,
                 selectedProviderKey: $selectedProviderKey,
+                selectedModelName: $selectedModelName,
                 isLocalDownloaded: isLocalDownloaded,
                 isLocalDownloading: isLocalDownloading,
                 localDownloadStatus: localDownloadStatus,

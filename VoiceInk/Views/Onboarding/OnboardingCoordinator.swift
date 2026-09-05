@@ -52,6 +52,12 @@ final class OnboardingCoordinator: ObservableObject {
         }
     }
 
+    @Published var storedOnboardingTranscriptionModel: String {
+        didSet {
+            defaults.set(storedOnboardingTranscriptionModel, forKey: OnboardingStorageKeys.transcriptionModel)
+        }
+    }
+
     @Published var permissionStatuses: [OnboardingPermissionKind: OnboardingPermissionStatus] = [:]
     @Published var isSelectedTranscriptionProviderVerified = false
     @Published var isSelectedAPIProviderVerified = false
@@ -81,6 +87,9 @@ final class OnboardingCoordinator: ObservableObject {
             forKey: OnboardingStorageKeys.transcriptionProvider
         ) ?? ""
         self.hasSkippedAPISetup = defaults.bool(forKey: OnboardingStorageKeys.skippedAPISetup)
+        self.storedOnboardingTranscriptionModel = defaults.string(
+            forKey: OnboardingStorageKeys.transcriptionModel
+        ) ?? ""
     }
 
     deinit {
@@ -252,7 +261,7 @@ final class OnboardingCoordinator: ObservableObject {
     var onboardingTranscriptionProviderOptions: [any CloudProvider] {
         let preferredOrder = [
             "AssemblyAI", "Cartesia", "Deepgram", "ElevenLabs", "Soniox",
-            "Speechmatics", "xAI", "Mistral", "Groq", "Gemini"
+            "Speechmatics", "xAI", "Mistral", "Groq", "Gemini", "OpenAI"
         ]
 
         return CloudProviderRegistry.allProviders.sorted { first, second in
@@ -371,7 +380,20 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     func selectedTranscriptionModel(for provider: any CloudProvider) -> CloudModel? {
-        provider.models.first(where: \.supportsStreaming) ?? provider.models.first
+        let models = provider.models
+        return models.first { $0.name == storedOnboardingTranscriptionModel }
+            ?? models.first(where: \.supportsStreaming) ?? models.first
+    }
+
+    func selectedOnboardingTranscriptionModelBinding() -> Binding<String> {
+        Binding(
+            get: { [weak self] in self?.selectedOnboardingTranscriptionModelName ?? "" },
+            set: { [weak self] modelName in
+                guard let self, let provider = selectedOnboardingTranscriptionProvider,
+                      provider.models.contains(where: { $0.name == modelName }) else { return }
+                storedOnboardingTranscriptionModel = modelName
+            }
+        )
     }
 
     func selectedOnboardingProviderBinding(aiService: AIService) -> Binding<AIProvider> {
@@ -423,6 +445,7 @@ enum OnboardingStorageKeys {
     static let aiProvider = "onboardingAIProvider"
     static let transcriptionSetupKind = "onboardingTranscriptionSetupKind"
     static let transcriptionProvider = "onboardingTranscriptionProvider"
+    static let transcriptionModel = "onboardingTranscriptionModel"
     static let skippedAPISetup = "onboardingSkippedAPISetup"
 
     static let onboardingKeys = [
@@ -432,6 +455,7 @@ enum OnboardingStorageKeys {
         aiProvider,
         transcriptionSetupKind,
         transcriptionProvider,
+        transcriptionModel,
         skippedAPISetup,
         experienceIndex,
         "onboardingStarterModeIndex"

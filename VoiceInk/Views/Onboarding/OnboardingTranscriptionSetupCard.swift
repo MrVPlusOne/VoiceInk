@@ -6,6 +6,7 @@ struct OnboardingTranscriptionSetupCard: View {
     let setupKind: OnboardingTranscriptionSetupKind
     let providerOptions: [any CloudProvider]
     @Binding var selectedProviderKey: String
+    @Binding var selectedModelName: String
     let isLocalDownloaded: Bool
     let isLocalDownloading: Bool
     let localDownloadStatus: FluidAudioDownloadStatus?
@@ -141,6 +142,15 @@ struct OnboardingTranscriptionSetupCard: View {
     private var cloudSetup: some View {
         VStack(alignment: .leading, spacing: 14) {
             providerSummary
+
+            if let selectedProvider, selectedProvider.models.count > 1 {
+                Picker("Transcription model", selection: $selectedModelName) {
+                    ForEach(selectedProvider.models, id: \.name) { model in
+                        Text(model.displayName).tag(model.name)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
 
             if isSelectedProviderConnected {
                 verifiedProviderSummary

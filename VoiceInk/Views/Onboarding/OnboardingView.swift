@@ -58,6 +58,7 @@ struct OnboardingView: View {
                         setupKind: coordinator.transcriptionSetupKind,
                         providerOptions: coordinator.onboardingTranscriptionProviderOptions,
                         selectedProviderKey: coordinator.selectedOnboardingTranscriptionProviderKeyBinding(),
+                        selectedModelName: coordinator.selectedOnboardingTranscriptionModelBinding(),
                         isLocalDownloaded: isTranscriptionModelDownloaded,
                         isLocalDownloading: coordinator.requiredTranscriptionModel.map {
                             fluidAudioModelManager.isFluidAudioModelDownloading($0)
