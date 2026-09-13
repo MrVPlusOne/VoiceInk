@@ -56,9 +56,15 @@ class AIEnhancementService: ObservableObject {
            let decodedPrompts = try? JSONDecoder().decode([CustomPrompt].self, from: savedPromptsData) {
             self.customPrompts = decodedPrompts
         } else {
-            self.customPrompts = []
+            // Fresh installations need a real prompt before an enabled mode can enhance.
+            // Preserve an explicitly saved empty list (the user may have deleted all prompts).
+            self.customPrompts = UserDefaults.standard.data(forKey: "customPrompts") == nil
+                ? [.defaultTranscriptionCleanup] : []
         }
 
+        if UserDefaults.standard.data(forKey: "customPrompts") == nil {
+            savePrompts()
+        }
         repairModePromptSelections()
 
         NotificationCenter.default.addObserver(
@@ -218,6 +224,10 @@ class AIEnhancementService: ObservableObject {
         configuration: EnhancementRuntimeConfiguration,
         contextSnapshot: RecordingContextSnapshot?
     ) async throws -> String {
+        // A preparation failure must not attach the previous request's metadata to a new record.
+        lastSystemMessageSent = nil
+        lastUserMessageSent = nil
+        lastScreenshotContextForHistory = nil
         guard isConfigured(for: configuration) else {
             throw EnhancementError.notConfigured
         }

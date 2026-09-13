@@ -4,6 +4,7 @@ import os
 /// Encapsulates a single recording-to-transcription lifecycle (streaming or file-based).
 @MainActor
 protocol TranscriptionSession: AnyObject {
+    var diagnostics: TranscriptionDiagnosticsRecorder? { get }
     /// Prepares the session. Returns an audio chunk callback for streaming, or nil for file-based.
     func prepare(configuration: TranscriptionRuntimeConfiguration) async throws -> ((Data) -> Void)?
 
@@ -14,11 +15,16 @@ protocol TranscriptionSession: AnyObject {
     func cancel()
 }
 
+extension TranscriptionSession {
+    var diagnostics: TranscriptionDiagnosticsRecorder? { nil }
+}
+
 // MARK: - File-Based Session
 
 /// File-based session: records to file, uploads after stop.
 @MainActor
 final class FileTranscriptionSession: TranscriptionSession {
+    private(set) var diagnostics: TranscriptionDiagnosticsRecorder? = TranscriptionDiagnosticsRecorder()
     private let service: TranscriptionService
     private var model: (any TranscriptionModel)?
     private var context: TranscriptionRequestContext = .currentDefaults
@@ -30,6 +36,8 @@ final class FileTranscriptionSession: TranscriptionSession {
     func prepare(configuration: TranscriptionRuntimeConfiguration) async throws -> ((Data) -> Void)? {
         self.model = configuration.model
         self.context = configuration.requestContext
+        diagnostics = TranscriptionDiagnosticsRecorder()
+        self.context.diagnostics = diagnostics
         return nil
     }
 
@@ -50,6 +58,7 @@ final class FileTranscriptionSession: TranscriptionSession {
 /// Streaming session with automatic fallback to file-based upload on failure.
 @MainActor
 final class StreamingTranscriptionSession: TranscriptionSession {
+    private(set) var diagnostics: TranscriptionDiagnosticsRecorder? = TranscriptionDiagnosticsRecorder()
     private let streamingService: StreamingTranscriptionService
     private let fallbackService: TranscriptionService
     private var model: (any TranscriptionModel)?
@@ -66,7 +75,9 @@ final class StreamingTranscriptionSession: TranscriptionSession {
 
     func prepare(configuration: TranscriptionRuntimeConfiguration) async throws -> ((Data) -> Void)? {
         let model = configuration.model
-        let context = configuration.requestContext
+        var context = configuration.requestContext
+        diagnostics = TranscriptionDiagnosticsRecorder()
+        context.diagnostics = diagnostics
 
         self.model = model
         self.context = context

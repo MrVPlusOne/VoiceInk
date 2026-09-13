@@ -6,6 +6,7 @@ struct AIEditScreenContextInspectorView: View {
     var screenshotData: Data?
     var screenshotMetadata: String?
     var subtitle: String?
+    var contextTitle: LocalizedStringKey? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -40,7 +41,7 @@ struct AIEditScreenContextInspectorView: View {
 
                 if let contextText, !contextText.isEmpty {
                     textBlock(
-                        title: screenshotImage == nil ? "Screen Context" : "OCR Fallback Context",
+                        title: contextTitle ?? (screenshotImage == nil ? "Screen Context" : "OCR Fallback Context"),
                         text: contextText,
                         maxHeight: screenshotImage == nil ? 320 : 220
                     )

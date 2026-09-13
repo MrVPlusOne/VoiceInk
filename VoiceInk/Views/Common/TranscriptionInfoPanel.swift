@@ -9,6 +9,7 @@ struct TranscriptionInfoPanel: View {
     var body: some View {
         Form {
             detailsSection
+            transcriptionRequestSection
             screenshotContextSection
             aiRequestSection
         }
@@ -141,6 +142,35 @@ struct TranscriptionInfoPanel: View {
     // MARK: - AI Request Section
 
     @ViewBuilder
+    private var transcriptionRequestSection: some View {
+        Section {
+            if let requests = transcription.transcriptionRequestDiagnostics {
+                if requests.isEmpty {
+                    Text("No speech-to-text request inputs were recorded before this recording ended.")
+                        .foregroundColor(.secondary)
+                }
+                ForEach(Array(requests.enumerated()), id: \.offset) { index, request in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Attempt \(index + 1) — \(request.transport)")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(request.inspectionText)
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    .hoverCopyButton(textToCopy: request.inspectionText)
+                }
+            } else {
+                Text("Speech-to-text request metadata was not saved for this record. Current settings cannot reconstruct the original request.")
+                    .foregroundColor(.secondary)
+            }
+        } header: {
+            Text("Speech-to-text Request")
+        } footer: {
+            Text("Recorded inputs describe attempted requests, including failures and streaming fallback. They do not prove the provider accepted the request. Audio and API credentials are excluded.")
+        }
+    }
+
+    @ViewBuilder
     private var aiRequestSection: some View {
         if transcription.aiRequestSystemMessage != nil || transcription.aiRequestUserMessage != nil {
             Section {
@@ -170,13 +200,21 @@ struct TranscriptionInfoPanel: View {
                     }
                 }
             } header: {
-                Text("AI Request")
+                Text("AI Enhancement Request")
             }
             .hoverCopyButton(
                 textToCopy: fullRequestText,
                 alignment: .topTrailing,
                 padding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
             )
+        } else {
+            Section {
+                Text(transcription.enhancementDebugStatus ?? "No AI enhancement request metadata was saved for this record.")
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+            } header: {
+                Text("AI Enhancement Request")
+            }
         }
     }
 

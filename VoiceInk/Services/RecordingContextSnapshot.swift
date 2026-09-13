@@ -12,6 +12,12 @@ struct RecordingContextSnapshot {
 @MainActor
 final class RecordingContextSnapshotStore {
     private(set) var snapshot = RecordingContextSnapshot()
+    let readiness = RecordingContextReadiness()
+
+    func snapshotWhenReady() async -> RecordingContextSnapshot {
+        await readiness.wait()
+        return snapshot
+    }
 
     func updateSelectedText(_ text: String?) {
         snapshot.selectedText = Self.normalized(text)
@@ -42,28 +48,43 @@ final class RecordingContextSnapshotStore {
 enum RecordingContextCaptureService {
     static func startCapture(
         into store: RecordingContextSnapshotStore,
+        sourceSettings: TranscriptionContextSourceSettings,
         includeScreenshotContext: Bool = false
     ) -> [Task<Void, Never>] {
-        [
-            Task { @MainActor in
-                store.updateClipboardText(NSPasteboard.general.string(forType: .string))
-            },
-            Task { @MainActor in
+        // Freeze the target before asynchronous selection capture can change focus.
+        let screenCaptureService = ScreenCaptureService()
+        let target = sourceSettings.includeScreenText
+            ? screenCaptureService.makeFocusedWindowHint(excluding: ProcessInfo.processInfo.processIdentifier)
+            : nil
+        var tasks: [Task<Void, Never>] = []
+
+        if sourceSettings.includeClipboard {
+            store.updateClipboardText(NSPasteboard.general.string(forType: .string))
+        }
+        if sourceSettings.includeSelectedText {
+            store.readiness.started()
+            tasks.append(Task { @MainActor in
+                defer { store.readiness.finished() }
                 guard !Task.isCancelled else { return }
                 let selectedText = await SelectedTextService.fetchSelectedText()
                 guard !Task.isCancelled else { return }
                 store.updateSelectedText(selectedText)
-            },
-            Task { @MainActor in
+            })
+        }
+        if sourceSettings.includeScreenText, let target {
+            store.readiness.started()
+            tasks.append(Task { @MainActor in
+                defer { store.readiness.finished() }
                 guard CGPreflightScreenCaptureAccess(), !Task.isCancelled else { return }
-                let screenCaptureService = ScreenCaptureService()
                 let context = await screenCaptureService.captureWindowContext(
-                    includeScreenshot: includeScreenshotContext
+                    includeScreenshot: includeScreenshotContext,
+                    targetWindowHint: target
                 )
                 guard !Task.isCancelled else { return }
                 store.updateScreenContext(context)
-            }
-        ]
+            })
+        }
+        return tasks
     }
 
     nonisolated static func shouldIncludeScreenshotContext(

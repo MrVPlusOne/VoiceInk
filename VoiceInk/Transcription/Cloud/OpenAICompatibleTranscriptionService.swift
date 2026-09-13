@@ -13,6 +13,12 @@ class OpenAICompatibleTranscriptionService {
         request.setValue("Bearer \(model.apiKey)", forHTTPHeaderField: "Authorization")
 
         let body = try buildRequestBody(audioURL: audioURL, modelName: model.modelName, boundary: boundary, context: context)
+        context.recordRequest(
+            model: model,
+            prompt: context.promptWithRecognitionContext,
+            recognitionContext: context.recognitionContext,
+            notes: "The prompt above is the multipart prompt field. Recognition context is text only; no screenshot image is sent to speech recognition. Audio and authorization headers are omitted."
+        )
         let (data, response) = try await URLSession.shared.upload(for: request, from: body)
 
         guard let httpResponse = response as? HTTPURLResponse else {

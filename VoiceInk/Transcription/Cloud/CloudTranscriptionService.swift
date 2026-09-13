@@ -59,6 +59,17 @@ class CloudTranscriptionService: TranscriptionService {
             guard let cloudProvider = CloudProviderRegistry.provider(for: model.provider) else {
                 throw CloudTranscriptionError.unsupportedProvider
             }
+            let usesPrompt = [.openAI, .groq, .assemblyAI].contains(model.provider)
+            let prompt = model.provider == .openAI
+                ? context.promptWithRecognitionContext : transcriptionPrompt(from: context)
+            context.recordRequest(
+                model: model,
+                prompt: usesPrompt ? prompt : nil,
+                recognitionContext: model.provider == .openAI ? context.recognitionContext : nil,
+                notes: model.provider == .openAI
+                    ? "The prompt includes mode-allowed OCR/recognition text when enabled. No screenshot image is sent to speech recognition; images are used only by AI enhancement. Audio and authorization headers are omitted."
+                    : "Snapshot of VoiceInk's provider-adapter inputs, not a raw HTTP payload. This provider path does not receive screen context. Provider defaults, dictionary hints, and internal prompts are not represented here."
+            )
             let apiKey = try requireAPIKey(forProvider: cloudProvider.providerKey)
             return try await cloudProvider.transcribe(
                 audioData: audioData,
@@ -66,7 +77,7 @@ class CloudTranscriptionService: TranscriptionService {
                 apiKey: apiKey,
                 model: model.name,
                 language: language,
-                prompt: transcriptionPrompt(from: context),
+                prompt: prompt,
                 customVocabulary: getCustomDictionaryTerms()
             )
         } catch let error as CloudTranscriptionError {

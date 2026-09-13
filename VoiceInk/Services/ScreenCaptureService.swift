@@ -98,7 +98,7 @@ class ScreenCaptureService: ObservableObject {
         return result
     }
 
-    private func makeFocusedWindowHint(excluding currentPID: pid_t) -> ScreenCaptureWindowHint? {
+    func makeFocusedWindowHint(excluding currentPID: pid_t) -> ScreenCaptureWindowHint? {
         guard let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
               frontmostPID != currentPID else {
             return nil

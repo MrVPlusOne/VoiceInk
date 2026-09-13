@@ -131,7 +131,7 @@ private struct TranscriptionContextSettingsSection: View {
         } header: {
             HStack(spacing: 4) {
                 Text("Transcription Context")
-                InfoTip("When enabled for a supported model, VoiceInk can send selected text, clipboard text, and screen text that are already allowed by the active mode as recognition hints for transcription.")
+                InfoTip("When enabled, VoiceInk sends only the selected text, clipboard text, and screen OCR allowed by the active mode as recognition hints. Built-in OpenAI transcription models enable this by default. Screenshot images go to AI enhancement, not speech recognition.")
             }
         }
     }

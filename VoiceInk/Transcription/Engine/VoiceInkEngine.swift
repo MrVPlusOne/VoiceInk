@@ -401,6 +401,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
         activeRecordingContextStore = store
         activeRecordingContextTasks = RecordingContextCaptureService.startCapture(
             into: store,
+            sourceSettings: .mode(ModeManager.shared.currentEffectiveConfiguration),
             includeScreenshotContext: includeScreenshotContext
         )
     }
@@ -467,9 +468,7 @@ class VoiceInkEngine: NSObject, ObservableObject {
                 )
             },
             recordingContextSnapshot: {
-                await MainActor.run {
-                    contextStore?.snapshot
-                }
+                await contextStore?.snapshotWhenReady()
             },
             outputConfiguration: {
                 ModeRuntimeResolver.outputConfiguration()

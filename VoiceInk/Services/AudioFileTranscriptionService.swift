@@ -49,10 +49,12 @@ class AudioTranscriptionService: ObservableObject {
                 for: model,
                 realtimeEnabled: mode?.isRealtimeTranscriptionEnabled
             )
-            let requestContext = TranscriptionRequestContext(
+            let diagnostics = TranscriptionDiagnosticsRecorder()
+            var requestContext = TranscriptionRequestContext(
                 language: language,
                 prompt: UserDefaults.standard.string(forKey: "TranscriptionPrompt")
             )
+            requestContext.diagnostics = diagnostics
             let modeName = (mode?.isEnabled == true) ? mode?.name : nil
             let modeEmoji = (mode?.isEnabled == true) ? mode?.icon.value : nil
 
@@ -126,6 +128,8 @@ class AudioTranscriptionService: ObservableObject {
                         modeName: modeName,
                         modeEmoji: modeEmoji
                     )
+                    newTranscription.transcriptionRequestDiagnosticsJSON = diagnostics.encodedRequests
+                    newTranscription.recordEnhancementRequest(from: enhancementService)
                     modelContext.insert(newTranscription)
                     do {
                         try modelContext.save()
@@ -150,6 +154,8 @@ class AudioTranscriptionService: ObservableObject {
                         modeName: modeName,
                         modeEmoji: modeEmoji
                     )
+                    newTranscription.transcriptionRequestDiagnosticsJSON = diagnostics.encodedRequests
+                    newTranscription.recordEnhancementRequest(from: enhancementService)
                     modelContext.insert(newTranscription)
                     do {
                         try modelContext.save()
@@ -176,6 +182,8 @@ class AudioTranscriptionService: ObservableObject {
                     modeName: modeName,
                     modeEmoji: modeEmoji
                 )
+                newTranscription.transcriptionRequestDiagnosticsJSON = diagnostics.encodedRequests
+                newTranscription.enhancementDebugStatus = "Enhancement disabled or not configured; no enhancement request was made."
                 modelContext.insert(newTranscription)
                 do {
                     try modelContext.save()

@@ -59,6 +59,14 @@ struct InlineHistoryView: View {
         return displayedEntries.first { $0.id == id }?.aiEditRecord
     }
 
+    private var transcriptionDetailRecord: Transcription? {
+        displayedEntries.first { $0.id == aiEditDetailEntryId }?.transcription
+    }
+
+    private var transcriptionScreenContextRecord: Transcription? {
+        displayedEntries.first { $0.id == screenContextEntryId }?.transcription
+    }
+
     private var screenContextRecord: AIEditHistoryRecord? {
         guard let id = screenContextEntryId else { return nil }
         return displayedEntries.first { $0.id == id }?.aiEditRecord
@@ -126,6 +134,13 @@ struct InlineHistoryView: View {
         )) {
             if let record = aiEditDetailRecord {
                 aiEditDetailSheet(record)
+            } else if let transcription = transcriptionDetailRecord {
+                VStack(spacing: 0) {
+                    AppPanelHeader(title: "Transcription Request Details", onClose: { aiEditDetailEntryId = nil })
+                    TranscriptionInfoPanel(transcription: transcription)
+                }
+                .frame(minWidth: 700, idealWidth: 900, minHeight: 580, idealHeight: 720)
+                .background(SidePanelBackground())
             }
         }
         .sheet(isPresented: Binding(
@@ -140,6 +155,14 @@ struct InlineHistoryView: View {
                     screenshotData: record.screenshotContextData,
                     screenshotMetadata: record.retainedScreenshotContextMetadata,
                     subtitle: "Sent with this AI Edit request"
+                )
+            } else if let transcription = transcriptionScreenContextRecord {
+                AIEditScreenContextInspectorView(
+                    contextText: transcription.screenContextForInspection,
+                    screenshotData: transcription.screenshotContextData,
+                    screenshotMetadata: transcription.retainedScreenshotContextMetadata,
+                    subtitle: "Saved context for speech recognition and AI enhancement",
+                    contextTitle: "Recorded Context"
                 )
             }
         }
@@ -325,10 +348,10 @@ struct InlineHistoryView: View {
                         onShowInfo: {
                             openPanel(mode: .info, entryID: entry.id)
                         },
-                        onShowDebug: entry.aiEditRecord == nil ? nil : {
+                        onShowDebug: {
                             openAIEditDetail(entryID: entry.id)
                         },
-                        onShowScreenContext: entry.aiEditRecord?.hasInspectableScreenContext != true ? nil : {
+                        onShowScreenContext: entry.transcription == nil && entry.aiEditRecord?.hasInspectableScreenContext != true ? nil : {
                             openScreenContext(entryID: entry.id)
                         }
                     )
@@ -695,6 +718,8 @@ private struct HistoryCardRow: View {
         .frame(maxHeight: 350)
         .hoverCopyButton(textToCopy: displayText)
 
+        aiEditDebugButtonRow
+
         if hasAudioFile, let urlString = transcription.audioFileURL,
            let url = URL(string: urlString) {
             Divider()
@@ -747,7 +772,7 @@ private struct HistoryCardRow: View {
                         .font(.system(size: 11, weight: .medium))
                 }
                 .buttonStyle(.borderless)
-                .help("View AI Edit prompt and payload")
+                .help("View saved request prompts and payloads")
             }
 
             if let onShowScreenContext {

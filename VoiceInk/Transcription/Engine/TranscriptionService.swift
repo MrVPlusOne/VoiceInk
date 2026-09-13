@@ -4,6 +4,7 @@ struct TranscriptionRequestContext {
     let language: String?
     let prompt: String?
     let recognitionContext: String?
+    var diagnostics: TranscriptionDiagnosticsRecorder?
 
     init(language: String?, prompt: String?, recognitionContext: String? = nil) {
         self.language = language
@@ -24,6 +25,24 @@ struct TranscriptionRequestContext {
             basePrompt: prompt,
             recognitionContext: recognitionContext
         )
+    }
+
+    func recordRequest(
+        model: any TranscriptionModel,
+        transport: String = "File",
+        prompt: String? = nil,
+        recognitionContext: String? = nil,
+        notes: String
+    ) {
+        diagnostics?.record(TranscriptionRequestDiagnostics(
+            model: (model as? CustomCloudModel)?.modelName ?? model.name,
+            provider: model.provider.rawValue,
+            transport: transport,
+            language: language,
+            prompt: prompt,
+            recognitionContext: recognitionContext,
+            notes: notes
+        ))
     }
 }
 
@@ -62,10 +81,6 @@ struct TranscriptionContextSourceSettings: Equatable {
 
 enum TranscriptionContextModelSettings {
     private static let enabledKeyPrefix = "TranscriptionContextEnabled"
-    private static let openAITranscriptionContextModelNames: Set<String> = [
-        "gpt-4o-transcribe",
-        "gpt-4o-mini-transcribe"
-    ]
 
     static func storageID(for model: any TranscriptionModel) -> String {
         if let customModel = model as? CustomCloudModel {
@@ -84,30 +99,30 @@ enum TranscriptionContextModelSettings {
             return customModel.supportsTranscriptionContext
         }
 
-        return false
+        return model.provider == .openAI && isKnownOpenAITranscriptionContextModel(model.name)
     }
 
-    static func isSendContextEnabled(for model: any TranscriptionModel) -> Bool {
-        guard supportsTranscriptionContext(model) else { return false }
-        return UserDefaults.standard.bool(forKey: userDefaultsKey(for: model))
+    static func isSendContextEnabled(for model: any TranscriptionModel, defaults: UserDefaults = .standard) -> Bool {
+        TranscriptionContextPolicy.isEnabled(
+            supported: supportsTranscriptionContext(model),
+            isBuiltInOpenAI: model.provider == .openAI,
+            explicitPreference: defaults.object(forKey: userDefaultsKey(for: model)) as? Bool
+        )
     }
 
-    static func setSendContextEnabled(_ isEnabled: Bool, for model: any TranscriptionModel) {
+    static func setSendContextEnabled(_ isEnabled: Bool, for model: any TranscriptionModel, defaults: UserDefaults = .standard) {
         let key = userDefaultsKey(for: model)
-        if isEnabled, supportsTranscriptionContext(model) {
-            UserDefaults.standard.set(true, forKey: key)
+        if supportsTranscriptionContext(model) {
+            // Preserve an explicit opt-out even for models that default to using mode-allowed context.
+            defaults.set(isEnabled, forKey: key)
         } else {
-            UserDefaults.standard.removeObject(forKey: key)
+            defaults.removeObject(forKey: key)
         }
         NotificationCenter.default.post(name: .AppSettingsDidChange, object: nil)
     }
 
     static func isKnownOpenAITranscriptionContextModel(_ modelName: String) -> Bool {
-        openAITranscriptionContextModelNames.contains(normalizedModelName(modelName))
-    }
-
-    private static func normalizedModelName(_ modelName: String) -> String {
-        modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        TranscriptionContextPolicy.isKnownOpenAIModel(modelName)
     }
 }
 

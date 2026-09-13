@@ -158,10 +158,13 @@ class AudioTranscriptionManager: ObservableObject {
             // Phase: Transcribing
             item.status = .processing(phase: .transcribing)
             let transcriptionStart = Date()
+            let diagnostics = TranscriptionDiagnosticsRecorder()
+            var requestContext = transcriptionConfiguration.requestContext
+            requestContext.diagnostics = diagnostics
             var text = try await serviceRegistry.transcribe(
                 audioURL: permanentURL,
                 model: currentModel,
-                context: transcriptionConfiguration.requestContext
+                context: requestContext
             )
             let transcriptionDuration = Date().timeIntervalSince(transcriptionStart)
             text = TranscriptionOutputFilter.filter(text)
@@ -244,6 +247,15 @@ class AudioTranscriptionManager: ObservableObject {
                 )
             }
 
+            transcription.transcriptionRequestDiagnosticsJSON = diagnostics.encodedRequests
+            if let enhancementService = engine.enhancementService,
+               let enhancementConfiguration,
+               enhancementConfiguration.isEnabled,
+               enhancementService.isConfigured(for: enhancementConfiguration) {
+                transcription.recordEnhancementRequest(from: enhancementService)
+            } else {
+                transcription.enhancementDebugStatus = "Enhancement disabled or not configured; no enhancement request was made."
+            }
             modelContext.insert(transcription)
             try modelContext.save()
             NotificationCenter.default.post(name: .transcriptionCreated, object: transcription)

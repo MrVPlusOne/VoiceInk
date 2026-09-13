@@ -57,6 +57,10 @@ class WhisperTranscriptionService: TranscriptionService {
         // Set prompt
         await whisperContext.setLanguage(context.language)
         await whisperContext.setPrompt(context.prompt ?? "")
+        context.recordRequest(
+            model: model, prompt: context.prompt,
+            notes: "Local Whisper language and prompt inputs. Screen context is not supplied to this engine."
+        )
 
         // Transcribe
         let success = await whisperContext.fullTranscribe(samples: data)

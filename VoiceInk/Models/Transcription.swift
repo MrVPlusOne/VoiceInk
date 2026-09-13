@@ -39,6 +39,8 @@ final class Transcription {
     var enhancementDuration: TimeInterval?
     var aiRequestSystemMessage: String?
     var aiRequestUserMessage: String?
+    var transcriptionRequestDiagnosticsJSON: String?
+    var enhancementDebugStatus: String?
     var screenshotContextData: Data?
     var screenshotContextMediaType: String?
     var screenshotContextWidth: Int?
@@ -114,9 +116,7 @@ final class Transcription {
         enhancementDuration = nil
         aiEnhancementModelName = nil
         promptName = nil
-        aiRequestSystemMessage = nil
-        aiRequestUserMessage = nil
-        clearScreenshotContext()
+        // Keep diagnostics for requests already attempted, even when delivery is canceled.
     }
 
     var screenshotContextStatus: TranscriptionScreenshotContextStatus? {
@@ -126,6 +126,45 @@ final class Transcription {
 
     var hasRetainedScreenshotContext: Bool {
         screenshotContextData?.isEmpty == false
+    }
+
+    var transcriptionRequestDiagnostics: [TranscriptionRequestDiagnostics]? {
+        guard let json = transcriptionRequestDiagnosticsJSON else { return nil }
+        return try? JSONDecoder().decode([TranscriptionRequestDiagnostics].self, from: Data(json.utf8))
+    }
+
+    @MainActor
+    func recordEnhancementRequest(from service: AIEnhancementService) {
+        aiRequestSystemMessage = service.lastSystemMessageSent
+        aiRequestUserMessage = service.lastUserMessageSent
+        recordScreenshotContext(service.lastScreenshotContextForHistory)
+        enhancementDebugStatus = "Enhancement attempted."
+    }
+
+    var recognitionContextForInspection: String? {
+        let parts = (transcriptionRequestDiagnostics ?? []).enumerated().compactMap { index, request -> String? in
+            guard let context = request.recognitionContext, !context.isEmpty else { return nil }
+            return "Speech recognition attempt \(index + 1) (\(request.transport)):\n\(context)"
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+    }
+
+    var screenContextForInspection: String {
+        var parts: [String] = []
+        if let recognition = recognitionContextForInspection { parts.append(recognition) }
+        if let enhancement = sentCurrentWindowContext {
+            parts.append("AI enhancement screen text:\n\(enhancement)")
+        }
+        if let screenshot = sentScreenshotContextMetadata { parts.append(screenshot) }
+        if parts.isEmpty {
+            if hasRetainedScreenshotContext {
+                return "Screenshot retained for AI enhancement. No screen text was sent to speech recognition."
+            }
+            return transcriptionRequestDiagnosticsJSON == nil
+                ? "Screen context was not saved for this older record. It cannot be reconstructed from current settings."
+                : "No screen context was supplied by VoiceInk to the recorded requests."
+        }
+        return parts.joined(separator: "\n\n")
     }
 
     var sentCurrentWindowContext: String? {

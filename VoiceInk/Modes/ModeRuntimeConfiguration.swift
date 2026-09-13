@@ -19,10 +19,11 @@ struct TranscriptionRuntimeConfiguration {
 
     func requestContext(
         recordingContextSnapshot: RecordingContextSnapshot?,
-        sourceSettings: TranscriptionContextSourceSettings? = nil
+        sourceSettings: TranscriptionContextSourceSettings? = nil,
+        contextDefaults: UserDefaults = .standard
     ) -> TranscriptionRequestContext {
         let recognitionContext: String?
-        if TranscriptionContextModelSettings.isSendContextEnabled(for: model) {
+        if TranscriptionContextModelSettings.isSendContextEnabled(for: model, defaults: contextDefaults) {
             recognitionContext = TranscriptionRecognitionContextBuilder.build(
                 snapshot: recordingContextSnapshot,
                 sourceSettings: sourceSettings ?? .mode(mode)

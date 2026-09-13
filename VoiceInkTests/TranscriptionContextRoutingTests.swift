@@ -145,9 +145,83 @@ struct TranscriptionContextRoutingTests {
     }
 
     @Test func knownOpenAITranscriptionContextModelsAreRecognizedByName() {
+        #expect(TranscriptionContextModelSettings.isKnownOpenAITranscriptionContextModel("gpt-transcribe"))
         #expect(TranscriptionContextModelSettings.isKnownOpenAITranscriptionContextModel("gpt-4o-mini-transcribe"))
         #expect(TranscriptionContextModelSettings.isKnownOpenAITranscriptionContextModel(" GPT-4O-TRANSCRIBE "))
         #expect(!TranscriptionContextModelSettings.isKnownOpenAITranscriptionContextModel("whisper-large-v3"))
+    }
+
+    @Test func builtInOpenAIModelsExposeContextAndPersistAnExplicitOptOut() throws {
+        let suite = "TranscriptionContextTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for model in OpenAIProvider().models {
+            let supported = model.name != "whisper-1"
+            #expect(TranscriptionContextModelSettings.supportsTranscriptionContext(model) == supported)
+            #expect(TranscriptionContextModelSettings.isSendContextEnabled(for: model, defaults: defaults) == supported)
+            TranscriptionContextModelSettings.setSendContextEnabled(false, for: model, defaults: defaults)
+            #expect(!TranscriptionContextModelSettings.isSendContextEnabled(for: model, defaults: defaults))
+            if supported {
+                #expect(defaults.object(forKey: TranscriptionContextModelSettings.userDefaultsKey(for: model)) as? Bool == false)
+            }
+        }
+    }
+
+    @Test func gptTranscribeUsesOCRInTheAudioRequestButNeverTheImage() throws {
+        let suite = "TranscriptionContextTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = try #require(OpenAIProvider().models.first { $0.name == "gpt-transcribe" })
+        let configuration = TranscriptionRuntimeConfiguration(mode: nil, model: model, language: "en", isRealtimeEnabled: false)
+        let snapshot = contextSnapshotWithScreenshot()
+        let context = configuration.requestContext(recordingContextSnapshot: snapshot,
+            sourceSettings: TranscriptionContextSourceSettings(includeSelectedText: false, includeClipboard: false, includeScreenText: true),
+            contextDefaults: defaults)
+        let request = GPTTranscribeRequest.make(audioData: Data(), apiKey: "test-only", language: "en",
+            prompt: context.promptWithRecognitionContext, keywords: [], boundary: "test-context")
+        let body = String(decoding: try #require(request.httpBody), as: UTF8.self)
+        #expect(body.contains("<CURRENT_WINDOW_CONTEXT>\nWindow term\n</CURRENT_WINDOW_CONTEXT>"))
+        #expect(!body.contains("<CLIPBOARD_CONTEXT>"))
+        #expect(!body.contains("data:image"))
+        #expect(!body.contains("ATTACHED_SCREENSHOT_CONTEXT"))
+        #expect(snapshot.screenshotContext?.data == screenshotContext().data)
+
+        let noScreen = configuration.requestContext(recordingContextSnapshot: snapshot,
+            sourceSettings: .none, contextDefaults: defaults)
+        #expect(noScreen.recognitionContext == nil)
+        TranscriptionContextModelSettings.setSendContextEnabled(false, for: model, defaults: defaults)
+        let optedOut = configuration.requestContext(recordingContextSnapshot: snapshot,
+            sourceSettings: TranscriptionContextSourceSettings(includeSelectedText: true, includeClipboard: true, includeScreenText: true),
+            contextDefaults: defaults)
+        #expect(optedOut.recognitionContext == nil)
+    }
+
+    @Test func defaultCleanupPromptPreservesIntentAndTreatsContextAsUntrusted() {
+        let prompt = CustomPrompt.defaultTranscriptionCleanup
+        #expect(prompt.finalPromptText.contains("Do not add unspoken content"))
+        #expect(prompt.finalPromptText.contains("untrusted source material"))
+        #expect(prompt.title == "Transcription Cleanup")
+    }
+
+    @MainActor
+    @Test func recordingWaitsForBothOCRAndImageFromTheSameCapture() async throws {
+        let store = RecordingContextSnapshotStore()
+        let screenshot = screenshotContext()
+        store.readiness.started()
+        let capture = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(30))
+            store.updateScreenContext(ActiveWindowCaptureResult(contextText: "OCR term: einsum", screenshotContext: screenshot))
+            store.readiness.finished()
+        }
+        let snapshot = await store.snapshotWhenReady()
+        await capture.value
+        #expect(snapshot.screenText == "OCR term: einsum")
+        #expect(snapshot.screenshotContext?.data == screenshot.data)
+
+        let context = TranscriptionRecognitionContextBuilder.build(snapshot: snapshot,
+            sourceSettings: TranscriptionContextSourceSettings(includeSelectedText: false, includeClipboard: false, includeScreenText: true))
+        #expect(context?.contains("einsum") == true)
+        #expect(context?.contains("data:image") == false)
     }
 
     @Test func normalRecordingScreenshotCaptureUsesEnhancementGates() {

@@ -65,6 +65,8 @@ class TranscriptionPipeline {
         assistant: AssistantHooks = .inactive
     ) async {
         let model = transcriptionConfiguration.model
+        let diagnostics = session?.diagnostics ?? TranscriptionDiagnosticsRecorder()
+        transcription.enhancementDebugStatus = "Enhancement was not reached."
         var finalText: String?
         var didInsertSessionMetric = false
         var responseError: String?
@@ -87,6 +89,7 @@ class TranscriptionPipeline {
                 modelName: transcription.transcriptionModelName ?? model.displayName
             )
 
+            transcription.transcriptionRequestDiagnosticsJSON = diagnostics.encodedRequests
             do {
                 try modelContext.save()
             } catch {
@@ -102,9 +105,10 @@ class TranscriptionPipeline {
         do {
             let transcriptionStart = Date()
             let contextSnapshot = await recordingContextSnapshot()
-            let requestContext = transcriptionConfiguration.requestContext(
+            var requestContext = transcriptionConfiguration.requestContext(
                 recordingContextSnapshot: contextSnapshot
             )
+            requestContext.diagnostics = diagnostics
             var text: String
             if let session {
                 text = try await session.transcribe(audioURL: audioURL)
@@ -130,6 +134,9 @@ class TranscriptionPipeline {
             let formattingConfiguration = resolveFormattingConfiguration()
             let resolvedEnhancementConfiguration = enhancementConfiguration()
             let resolvedOutputConfiguration = outputConfiguration()
+            transcription.enhancementDebugStatus = assistant.isFollowUp
+                ? "Assistant follow-up; no transcription enhancement request was made."
+                : "Enhancement disabled or not configured; no enhancement request was made."
             let modeMetadata = metadata(
                 for: formattingConfiguration.mode ??
                     resolvedEnhancementConfiguration?.mode ??
@@ -169,6 +176,12 @@ class TranscriptionPipeline {
                 let shouldSkipEnhancement = !shouldRespondInRecorder &&
                     isSkipShortEnhancementEnabled &&
                     WordCounter.count(in: text) <= shortEnhancementWordThreshold
+                if shouldSkipEnhancement,
+                   let resolvedEnhancementConfiguration,
+                   resolvedEnhancementConfiguration.isEnabled,
+                   enhancementService?.isConfigured(for: resolvedEnhancementConfiguration) == true {
+                    transcription.enhancementDebugStatus = "Enhancement skipped because the transcript was below the configured word threshold."
+                }
 
                 if let enhancementService,
                    let resolvedEnhancementConfiguration,
@@ -178,6 +191,7 @@ class TranscriptionPipeline {
                     if shouldCancel() { await finishCanceledTranscription(); return }
 
                     onStateChange(.enhancing)
+                    transcription.enhancementDebugStatus = "Enhancement attempted. See the saved system prompt and user payload below."
                     let textForAI = text
                     if shouldRespondInRecorder {
                         await assistant.startResponse(textForAI, resolvedEnhancementConfiguration)
@@ -236,6 +250,7 @@ class TranscriptionPipeline {
         }
 
         func saveTranscriptionAndPostCompletion() {
+            transcription.transcriptionRequestDiagnosticsJSON = diagnostics.encodedRequests
             if transcription.transcriptionStatus == TranscriptionStatus.completed.rawValue {
                 do {
                     didInsertSessionMetric = try SessionMetricRecorder.recordRecorderSession(

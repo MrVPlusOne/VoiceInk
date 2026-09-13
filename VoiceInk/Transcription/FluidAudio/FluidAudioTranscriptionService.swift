@@ -129,6 +129,10 @@ class FluidAudioTranscriptionService: TranscriptionService {
     }
 
     func transcribe(audioURL: URL, model: any TranscriptionModel, context: TranscriptionRequestContext) async throws -> String {
+        context.recordRequest(
+            model: model,
+            notes: "Local speech recognition. This engine does not consume the configured transcription prompt or screen context. The language setting may be normalized or ignored by the selected model."
+        )
         if FluidAudioModelManager.isParakeetUnifiedModel(named: model.name) {
             try await ensureUnifiedModelsLoaded()
             guard let unifiedAsrManager else {

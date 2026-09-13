@@ -143,6 +143,10 @@ class StreamingTranscriptionService {
 
     /// Start a streaming transcription session for the given model.
     func startStreaming(model: any TranscriptionModel, context: TranscriptionRequestContext) async throws {
+        context.recordRequest(
+            model: model, transport: "Streaming",
+            notes: "Streaming connection inputs. This path does not forward the configured transcription prompt or screen context. Provider-specific defaults and dictionary hints are not represented here."
+        )
         let start = Date()
         state = .connecting
         committedSegments = []

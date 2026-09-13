@@ -50,6 +50,10 @@ class NativeAppleTranscriptionService: TranscriptionService {
     }
 
     func transcribe(audioURL: URL, model: any TranscriptionModel, context: TranscriptionRequestContext) async throws -> String {
+        context.recordRequest(
+            model: model,
+            notes: "Apple speech recognition. This path does not supply a transcription prompt or screen context."
+        )
         guard model is NativeAppleModel else {
             throw ServiceError.invalidModel
         }
