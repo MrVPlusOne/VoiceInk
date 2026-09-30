@@ -103,14 +103,12 @@ struct ModeConfigDraft {
             return
         }
 
-        let availableModels = snapshot.availableModels(for: provider)
-        if let selectedAIModel,
-           !selectedAIModel.isEmpty,
-           (availableModels.isEmpty || availableModels.contains(selectedAIModel)) {
-            return
-        }
-
-        selectedAIModel = snapshot.selectedModel(for: provider)
+        selectedAIModel = EnhancementModelSelection.resolve(
+            provider == inheritedProvider ? selectedAIModel : nil,
+            availableModels: snapshot.availableModels(for: provider),
+            fallback: snapshot.selectedModel(for: provider),
+            allowsCustom: provider.supportsCustomModelID
+        )
     }
 
     mutating func inheritUsableTranscriptionModelSelection(from snapshot: ModeFormWarmupSnapshot) {

@@ -178,6 +178,10 @@ enum AIProvider: String, CaseIterable {
             return true
         }
     }
+
+    var supportsCustomModelID: Bool {
+        supportsEnhancement && self != .custom && self != .localCLI
+    }
 }
 
 struct OllamaRefreshResult {
@@ -251,12 +255,12 @@ class AIService: ObservableObject {
     }
     
     var currentModel: String {
-        if let selectedModel = selectedModels[selectedProvider],
-           !selectedModel.isEmpty,
-           (selectedProvider == .ollama && !selectedModel.isEmpty) || availableModels.contains(selectedModel) {
-            return selectedModel
-        }
-        return selectedProvider.defaultModel
+        EnhancementModelSelection.resolve(
+            selectedModels[selectedProvider],
+            availableModels: availableModels,
+            fallback: selectedProvider.defaultModel,
+            allowsCustom: selectedProvider.supportsCustomModelID
+        )
     }
 
     func selectedModel(for provider: AIProvider) -> String {

@@ -128,7 +128,7 @@ enum ModeRuntimeResolver {
         )
         let modelName = resolvedEnhancementModelName(
             provider: provider,
-            configuredModelName: mode?.selectedAIModel,
+            configuredModelName: mode?.selectedAIProvider == provider?.rawValue ? mode?.selectedAIModel : nil,
             aiService: aiService
         )
 
@@ -204,16 +204,11 @@ enum ModeRuntimeResolver {
         }
 
         let models = aiService.availableModels(for: provider)
-        if let configuredModelName,
-           !configuredModelName.isEmpty,
-           (models.isEmpty || models.contains(configuredModelName)) {
-            return configuredModelName
-        }
-
-        if let firstModel = models.first {
-            return firstModel
-        }
-
-        return provider.defaultModel
+        return EnhancementModelSelection.resolve(
+            configuredModelName,
+            availableModels: models,
+            fallback: models.first ?? provider.defaultModel,
+            allowsCustom: provider.supportsCustomModelID
+        )
     }
 }

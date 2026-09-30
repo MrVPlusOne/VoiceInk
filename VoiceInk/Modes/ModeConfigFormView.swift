@@ -18,6 +18,8 @@ struct ModeConfigFormView: View {
     @State private var isShowingIconPicker = false
     @State private var isShowingDeleteConfirmation = false
     @State private var isContextAwarenessExpanded = false
+    @State private var isShowingCustomModelInput = false
+    @State private var customModelInput = ""
 
     private var effectiveModelName: String? {
         draft.selectedTranscriptionModelName
@@ -371,27 +373,46 @@ struct ModeConfigFormView: View {
             }
         } else {
             let models = aiModelOptions(for: provider)
-            if models.isEmpty {
+            if models.isEmpty && !provider.supportsCustomModelID {
                 LabeledContent("AI Model") {
                     Text(provider == .openRouter ? LocalizedStringKey("No models loaded") : LocalizedStringKey("No models available"))
                         .foregroundColor(.secondary)
                         .italic()
                 }
             } else {
-                let modelBinding = Binding<String>(
+                let modelBinding = Binding<String?>(
                     get: {
                         if let model = draft.selectedAIModel, !model.isEmpty { return model }
                         return warmupSnapshot.selectedModel(for: provider)
                     },
                     set: { newModelValue in
-                        draft.selectedAIModel = newModelValue
+                        if let newModelValue {
+                            draft.selectedAIModel = newModelValue
+                        } else {
+                            customModelInput = draft.selectedAIModel ?? warmupSnapshot.selectedModel(for: provider)
+                            isShowingCustomModelInput = true
+                        }
                     }
                 )
 
                 Picker("AI Model", selection: modelBinding) {
                     ForEach(models, id: \.self) { model in
-                        Text(model).tag(model)
+                        Text(model).tag(Optional(model))
                     }
+                    if provider.supportsCustomModelID {
+                        Divider()
+                        Text("Custom…").tag(nil as String?)
+                    }
+                }
+                .alert("Custom Model ID", isPresented: $isShowingCustomModelInput) {
+                    TextField("Model ID", text: $customModelInput)
+                    Button("Cancel", role: .cancel) {}
+                    Button("Use Model") {
+                        draft.selectedAIModel = customModelInput
+                    }
+                    .disabled(customModelInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } message: {
+                    Text("Enter a model ID supported by \(provider.rawValue). Save the mode to keep this selection.")
                 }
 
                 if provider == .openRouter {
@@ -407,8 +428,8 @@ struct ModeConfigFormView: View {
     private func aiModelOptions(for provider: AIProvider) -> [String] {
         var models = warmupSnapshot.availableModels(for: provider)
 
-        if let selectedModel = draft.selectedAIModel,
-           !selectedModel.isEmpty,
+        let selectedModel = draft.selectedAIModel ?? warmupSnapshot.selectedModel(for: provider)
+        if !selectedModel.isEmpty,
            !models.contains(selectedModel) {
             models.insert(selectedModel, at: 0)
         }
