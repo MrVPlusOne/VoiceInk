@@ -13,7 +13,6 @@ struct ModeConfigDraft {
     var selectedTranscriptionModelName: String?
     var isRealtimeTranscriptionEnabled: Bool
     var selectedLanguage: String?
-    var isTextFormattingEnabled: Bool
     var useClipboardContext: Bool
     var useSelectedTextContext: Bool
     var useScreenCapture: Bool
@@ -23,7 +22,6 @@ struct ModeConfigDraft {
     var autoSendKey: AutoSendKey
     var customCommand: String
     var isDefault: Bool
-    var isTranscriptionFormattingExpanded: Bool
 
     private var sourceConfig: ModeConfig?
 
@@ -44,7 +42,6 @@ struct ModeConfigDraft {
             selectedTranscriptionModelName = inheritedConfig?.selectedTranscriptionModelName
             isRealtimeTranscriptionEnabled = true
             selectedLanguage = inheritedConfig?.selectedLanguage
-            isTextFormattingEnabled = true
             useClipboardContext = false
             useSelectedTextContext = false
             useScreenCapture = true
@@ -54,7 +51,6 @@ struct ModeConfigDraft {
             autoSendKey = .none
             customCommand = inheritedConfig?.customCommand?.command ?? ""
             isDefault = false
-            isTranscriptionFormattingExpanded = false
             sourceConfig = nil
 
         case .edit(let config):
@@ -71,7 +67,6 @@ struct ModeConfigDraft {
             selectedTranscriptionModelName = latestConfig.selectedTranscriptionModelName
             isRealtimeTranscriptionEnabled = latestConfig.isRealtimeTranscriptionEnabled
             selectedLanguage = latestConfig.selectedLanguage
-            isTextFormattingEnabled = latestConfig.isTextFormattingEnabled
             useClipboardContext = latestConfig.useClipboardContext
             useSelectedTextContext = latestConfig.useSelectedTextContext
             useScreenCapture = latestConfig.useScreenCapture
@@ -81,7 +76,6 @@ struct ModeConfigDraft {
             autoSendKey = latestConfig.autoSendKey
             customCommand = latestConfig.customCommand?.command ?? ""
             isDefault = latestConfig.isDefault
-            isTranscriptionFormattingExpanded = false
             sourceConfig = latestConfig
         }
     }
@@ -179,7 +173,6 @@ struct ModeConfigDraft {
                 useClipboardContext: useClipboardContext,
                 useSelectedTextContext: useSelectedTextContext,
                 useScreenCapture: useScreenCapture,
-                isTextFormattingEnabled: isTextFormattingEnabled,
                 selectedAIProvider: selectedAIProvider,
                 selectedAIModel: selectedAIModel,
                 outputMode: outputMode,
@@ -201,7 +194,6 @@ struct ModeConfigDraft {
             updatedConfig.selectedTranscriptionModelName = selectedTranscriptionModelName
             updatedConfig.isRealtimeTranscriptionEnabled = isRealtimeTranscriptionEnabled
             updatedConfig.selectedLanguage = selectedLanguage
-            updatedConfig.isTextFormattingEnabled = isTextFormattingEnabled
             updatedConfig.useClipboardContext = useClipboardContext
             updatedConfig.useSelectedTextContext = useSelectedTextContext
             updatedConfig.useScreenCapture = useScreenCapture

@@ -449,9 +449,6 @@ class VoiceInkEngine: NSObject, ObservableObject {
             transcription: transcription,
             audioURL: audioURL,
             transcriptionConfiguration: transcriptionConfiguration,
-            formattingConfiguration: {
-                ModeRuntimeResolver.transcriptionFormattingConfiguration()
-            },
             session: session,
             triggerWordModeSelection: { [weak self] text in
                 self?.selectTriggerWordModeIfNeeded(for: text)

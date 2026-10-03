@@ -171,11 +171,6 @@ class AudioTranscriptionManager: ObservableObject {
             text = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
             let modeMetadata = transcriptionConfiguration.metadata
-            let formattingConfiguration = ModeRuntimeResolver.transcriptionFormattingConfiguration(mode: mode)
-
-            if formattingConfiguration.isTextFormattingEnabled {
-                text = ParagraphFormatter.format(text)
-            }
 
             text = WordReplacementService.shared.applyReplacements(to: text, using: modelContext)
             let cleanedText = text

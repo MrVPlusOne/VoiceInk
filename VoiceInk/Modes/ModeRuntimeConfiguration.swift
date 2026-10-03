@@ -40,11 +40,6 @@ struct TranscriptionRuntimeConfiguration {
     }
 }
 
-struct TranscriptionFormattingConfiguration {
-    let mode: ModeConfig?
-    let isTextFormattingEnabled: Bool
-}
-
 struct EnhancementRuntimeConfiguration {
     let mode: ModeConfig?
     let isEnabled: Bool
@@ -101,15 +96,6 @@ enum ModeRuntimeResolver {
             model: model,
             language: language,
             isRealtimeEnabled: TranscriptionRealtimeSupport.isEnabled(for: model, modeValue: mode?.isRealtimeTranscriptionEnabled)
-        )
-    }
-
-    static func transcriptionFormattingConfiguration(mode: ModeConfig? = nil) -> TranscriptionFormattingConfiguration {
-        let mode = mode ?? ModeManager.shared.currentEffectiveConfiguration
-
-        return TranscriptionFormattingConfiguration(
-            mode: mode,
-            isTextFormattingEnabled: mode?.isTextFormattingEnabled ?? UserDefaults.standard.bool(forKey: "IsTextFormattingEnabled")
         )
     }
 

@@ -52,7 +52,6 @@ class TranscriptionPipeline {
         transcription: Transcription,
         audioURL: URL,
         transcriptionConfiguration: TranscriptionRuntimeConfiguration,
-        formattingConfiguration resolveFormattingConfiguration: @escaping () -> TranscriptionFormattingConfiguration,
         session: TranscriptionSession?,
         triggerWordModeSelection: @escaping (String) -> String? = { _ in nil },
         enhancementConfiguration: @escaping () -> EnhancementRuntimeConfiguration?,
@@ -131,22 +130,16 @@ class TranscriptionPipeline {
                 text = processedText
             }
 
-            let formattingConfiguration = resolveFormattingConfiguration()
             let resolvedEnhancementConfiguration = enhancementConfiguration()
             let resolvedOutputConfiguration = outputConfiguration()
             transcription.enhancementDebugStatus = assistant.isFollowUp
                 ? "Assistant follow-up; no transcription enhancement request was made."
                 : "Enhancement disabled or not configured; no enhancement request was made."
             let modeMetadata = metadata(
-                for: formattingConfiguration.mode ??
+                for: resolvedOutputConfiguration.mode ??
                     resolvedEnhancementConfiguration?.mode ??
-                    resolvedOutputConfiguration.mode ??
                     transcriptionConfiguration.mode
             )
-
-            if formattingConfiguration.isTextFormattingEnabled {
-                text = ParagraphFormatter.format(text)
-            }
 
             text = WordReplacementService.shared.applyReplacements(to: text, using: modelContext)
             let cleanedText = text

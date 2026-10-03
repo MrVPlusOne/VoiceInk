@@ -23,6 +23,7 @@ enum AIPrompts {
     - Apply spoken self-corrections: when the user replaces earlier wording with cues like "scratch that", "actually", "I mean", "wait no", "no wait", "sorry", "oops", "rather", "make that", "I meant", "correction", "delete that", "forget that", or "never mind", remove the abandoned wording and keep the corrected wording.
     - Convert clear spoken punctuation cues into punctuation marks, including period, full stop, comma, question mark, exclamation point, colon, semicolon, dash, hyphen, parentheses, and quotation marks.
     - Apply spoken layout cues such as "new line", "next line", "line break", "new paragraph", "blank line", and "separate paragraph".
+    - Break long dictation into paragraphs where the topic changes.
     - Format obvious lists, steps, counts, and sequences clearly.
     - Convert clear number, date, time, currency, percentage, and measurement phrases into readable written form.
     - Use <CUSTOM_VOCABULARY> as the spelling authority for names, proper nouns, acronyms, product names, and technical terms.

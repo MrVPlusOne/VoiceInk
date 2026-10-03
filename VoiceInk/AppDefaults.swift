@@ -28,7 +28,6 @@ enum AppDefaults {
         CustomSoundManager.SoundType.stop.builtInSoundKey: CustomSoundManager.SoundType.stop.defaultBuiltInSound.rawValue,
 
         // Recording & Transcription
-        "IsTextFormattingEnabled": true,
         "IsVADEnabled": true,
         "SelectedLanguage": "en",
         "AppendTrailingSpace": true,

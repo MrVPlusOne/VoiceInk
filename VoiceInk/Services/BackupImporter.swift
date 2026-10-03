@@ -14,7 +14,6 @@ enum BackupImportError: LocalizedError {
 }
 
 enum BackupImporter {
-    private static let keyIsTextFormattingEnabled = "IsTextFormattingEnabled"
 
     @MainActor
     static func apply(_ backup: BackupFile, categories: Set<BackupCategory>, enhancementService: AIEnhancementService, recordingShortcutManager: RecordingShortcutManager, menuBarManager: MenuBarManager, mediaController: MediaController, playbackController: PlaybackController, recorderUIManager: RecorderUIManager, modelContext: ModelContext, transcriptionModelManager: TranscriptionModelManager) throws {
@@ -187,9 +186,6 @@ enum BackupImporter {
             if experimentalEnabled == false {
                 playbackController.isPauseMediaEnabled = false
             }
-        }
-        if let textFormattingEnabled = general.isTextFormattingEnabled {
-            UserDefaults.standard.set(textFormattingEnabled, forKey: keyIsTextFormattingEnabled)
         }
         if let restoreClipboard = general.restoreClipboardAfterPaste {
             UserDefaults.standard.set(restoreClipboard, forKey: "restoreClipboardAfterPaste")

@@ -1,7 +1,7 @@
 import Foundation
 
 enum UniversalAIEditInstructionTranscriptionProcessor {
-    static let transcriptionPrompt = String(localized: "Transcribe the speech in the original spoken language as a concise AI Edit instruction. Do not translate unless the speaker explicitly asks for translation. Preserve command intent, requested tone, length, audience, formatting changes, and literal operands.")
+    static let transcriptionPrompt = String(localized: "The speaker is telling a writing assistant how to write or change some text. Transcribe exactly what they say, in the language they speak.")
 
     /// AI Edit instructions are commands, not final prose. Keep post-STT cleanup minimal
     /// so literal command targets like "[TODO]", "(beta)", or "<code>" survive.

@@ -104,7 +104,6 @@ struct GeneralBackup: Codable {
     let isSystemMuteEnabled: Bool?
     let isPauseMediaEnabled: Bool?
     let audioResumptionDelay: Double?
-    let isTextFormattingEnabled: Bool?
     let isExperimentalFeaturesEnabled: Bool?
     let restoreClipboardAfterPaste: Bool?
     let clipboardRestoreDelay: Double?

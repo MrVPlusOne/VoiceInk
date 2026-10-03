@@ -63,11 +63,6 @@ class AudioTranscriptionService: ObservableObject {
             let transcriptionDuration = Date().timeIntervalSince(transcriptionStart)
             text = TranscriptionOutputFilter.filter(text)
             text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            let formattingConfiguration = ModeRuntimeResolver.transcriptionFormattingConfiguration(mode: mode)
-
-            if formattingConfiguration.isTextFormattingEnabled {
-                text = ParagraphFormatter.format(text)
-            }
 
             text = WordReplacementService.shared.applyReplacements(to: text, using: modelContext)
             let cleanedText = text
