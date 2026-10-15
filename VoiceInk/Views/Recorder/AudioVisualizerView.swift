@@ -1,47 +1,31 @@
 import SwiftUI
 
-struct AudioVisualizer: View {
-    let audioMeter: AudioMeter
-    let color: Color
-    let isActive: Bool
-
-    private let barCount = 15
-    private let barWidth: CGFloat = 3
-    private let barSpacing: CGFloat = 2
-    private let minHeight: CGFloat = 4
-    private let maxHeight: CGFloat = 28
-
-    private let phases: [Double]
-
-    init(audioMeter: AudioMeter, color: Color, isActive: Bool) {
-        self.audioMeter = audioMeter
-        self.color = color
-        self.isActive = isActive
-        self.phases = (0..<barCount).map { Double($0) * 0.4 }
-    }
+/// Live input level bars, newest on the right: the same meter as Wet Ink's recording pill. Each bar is one
+/// 50 ms level from `VoiceLevelHistory`, so the bars scroll and their height follows how loud you are.
+struct VoiceLevelBars: View {
+    let levels: [Double]
+    var color: Color = .white
+    var barCount = 15
+    var barWidth: CGFloat = 3
+    var barSpacing: CGFloat = 2
+    var minHeight: CGFloat = 4
+    var maxHeight: CGFloat = 28
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.016)) { context in
-            HStack(spacing: barSpacing) {
-                ForEach(0..<barCount, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: barWidth / 2)
-                        .fill(color.opacity(0.85))
-                        .frame(width: barWidth, height: barHeight(for: index, at: context.date))
-                }
+        HStack(spacing: barSpacing) {
+            ForEach(Array(visibleLevels.enumerated()), id: \.offset) { _, level in
+                Capsule()
+                    .fill(color.opacity(0.9))
+                    .frame(width: barWidth, height: minHeight + CGFloat(level) * (maxHeight - minHeight))
             }
         }
+        .frame(height: maxHeight)
+        .animation(.linear(duration: 0.05), value: levels)
     }
 
-    private func barHeight(for index: Int, at date: Date) -> CGFloat {
-        guard isActive else { return minHeight }
-
-        let time = date.timeIntervalSince1970
-        let amplitude = max(0, min(1, pow(audioMeter.averagePower, 0.7))) // boosted for visibility
-        let wave = sin(time * 8 + phases[index]) * 0.5 + 0.5
-        let centerDistance = abs(Double(index) - Double(barCount) / 2) / Double(barCount / 2)
-        let centerBoost = 1.0 - (centerDistance * 0.4)
-
-        return max(minHeight, minHeight + CGFloat(amplitude * wave * centerBoost) * (maxHeight - minHeight))
+    private var visibleLevels: [Double] {
+        let recent = levels.suffix(barCount)
+        return Array(repeating: 0, count: barCount - recent.count) + recent
     }
 }
 
@@ -99,6 +83,6 @@ struct ProcessingStatusDisplay: View {
 
             ProgressAnimation(color: color, animationSpeed: animationSpeed)
         }
-        .frame(height: 28) // matches AudioVisualizer maxHeight to prevent layout shift
+        .frame(height: 28) // matches VoiceLevelBars maxHeight to prevent layout shift
     }
 }

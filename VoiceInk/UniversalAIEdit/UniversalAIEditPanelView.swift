@@ -528,10 +528,7 @@ struct UniversalAIEditPanelView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(AppTheme.Accent.primary)
 
-            UniversalAIEditVoiceWaveform(
-                currentLevel: manager.voiceMeterLevel,
-                samples: manager.voiceMeterSamples
-            )
+            UniversalAIEditVoiceWaveform(levels: manager.voiceLevels)
 
             Text("Esc cancels, typing switches to manual")
                 .font(.system(size: 11, weight: .medium))
@@ -1037,19 +1034,20 @@ private enum UniversalAIEditPreviewMode: Hashable {
     case newText
 }
 
+/// The instruction recording's live level, drawn with the same bars as the transcription recorder.
 private struct UniversalAIEditVoiceWaveform: View {
-    let currentLevel: Double
-    let samples: [Double]
+    let levels: [Double]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 1) {
-            ForEach(Array(waveformValues.enumerated()), id: \.offset) { _, level in
-                Capsule()
-                    .fill(level >= 0.95 ? AppTheme.Status.error : AppTheme.Accent.primary)
-                    .frame(width: 2, height: max(2, CGFloat(2 + level * 12)))
-                    .opacity(max(0.18, 0.35 + level * 0.55))
-            }
-        }
+        VoiceLevelBars(
+            levels: levels,
+            color: AppTheme.Accent.primary,
+            barCount: 34,
+            barWidth: 2,
+            barSpacing: 1,
+            minHeight: 2,
+            maxHeight: 14
+        )
         .frame(width: 104, height: 18)
         .padding(.horizontal, 5)
         .background(
@@ -1061,16 +1059,5 @@ private struct UniversalAIEditVoiceWaveform: View {
                 .stroke(AppTheme.Accent.primary.opacity(0.18), lineWidth: 1)
         )
         .accessibilityLabel("Current and recent input level")
-    }
-
-    private var waveformValues: [Double] {
-        let visibleCount = 34
-        let visibleSamples = samples.suffix(visibleCount - 1).map(clamped)
-        let padding = Array(repeating: 0.0, count: max(0, visibleCount - 1 - visibleSamples.count))
-        return padding + visibleSamples + [clamped(currentLevel)]
-    }
-
-    private func clamped(_ value: Double) -> Double {
-        min(1, max(0, value))
     }
 }

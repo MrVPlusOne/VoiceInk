@@ -13,7 +13,8 @@ class Recorder: NSObject, ObservableObject {
     private var isReconfiguring = false
     private let mediaController = MediaController.shared
     private let playbackController = PlaybackController.shared
-    @Published var audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
+    /// Recent input levels for the recording indicators, newest last. See `VoiceLevelHistory`.
+    @Published private(set) var voiceLevels: [Double] = VoiceLevelHistory().levels
     private var audioMeterUpdateTimer: DispatchSourceTimer?
     private let audioMeterQueue = DispatchQueue(label: "com.prakashjoshipax.voiceink.audiometer", qos: .userInteractive)
     /// Dedicated serial queue for hardware setup.
@@ -22,9 +23,8 @@ class Recorder: NSObject, ObservableObject {
     private var mediaPauseTask: Task<Void, Never>?
     private var audioRestorationTask: Task<Void, Never>?
     private var currentAudioBehavior: RecorderAudioBehavior = .standardRecording
-    private let smoothedValuesLock = NSLock()
-    private var smoothedAverage: Float = 0
-    private var smoothedPeak: Float = 0
+    private let levelHistoryLock = NSLock()
+    private var levelHistory = VoiceLevelHistory()
 
     /// Audio chunk callback for streaming. Can be updated while recording;
     /// changes are forwarded to the live CoreAudioRecorder.
@@ -189,12 +189,10 @@ class Recorder: NSObject, ObservableObject {
         }
         onAudioChunk = nil
 
-        smoothedValuesLock.lock()
-        smoothedAverage = 0
-        smoothedPeak = 0
-        smoothedValuesLock.unlock()
-
-        audioMeter = AudioMeter(averagePower: 0, peakPower: 0)
+        levelHistoryLock.lock()
+        levelHistory.reset()
+        levelHistoryLock.unlock()
+        voiceLevels = VoiceLevelHistory().levels
 
         audioRestorationTask?.cancel()
         if currentAudioBehavior.allowsSystemMute || currentAudioBehavior.allowsMediaPause {
@@ -284,43 +282,15 @@ class Recorder: NSObject, ObservableObject {
     private func updateAudioMeter() {
         guard let recorder = recorder else { return }
 
-        // Sample audio levels (thread-safe read)
-        let averagePower = recorder.averagePower
-        let peakPower = recorder.peakPower
+        // RMS power of the latest input buffer, in dBFS (thread-safe read).
+        levelHistoryLock.lock()
+        let completed = levelHistory.addReading(decibels: recorder.averagePower)
+        let levels = levelHistory.levels
+        levelHistoryLock.unlock()
+        guard completed else { return }
 
-        // Normalize values
-        let minVisibleDb: Float = -60.0
-        let maxVisibleDb: Float = 0.0
-
-        let normalizedAverage: Float
-        if averagePower < minVisibleDb {
-            normalizedAverage = 0.0
-        } else if averagePower >= maxVisibleDb {
-            normalizedAverage = 1.0
-        } else {
-            normalizedAverage = (averagePower - minVisibleDb) / (maxVisibleDb - minVisibleDb)
-        }
-
-        let normalizedPeak: Float
-        if peakPower < minVisibleDb {
-            normalizedPeak = 0.0
-        } else if peakPower >= maxVisibleDb {
-            normalizedPeak = 1.0
-        } else {
-            normalizedPeak = (peakPower - minVisibleDb) / (maxVisibleDb - minVisibleDb)
-        }
-
-        // Apply EMA smoothing with thread-safe access
-        smoothedValuesLock.lock()
-        smoothedAverage = smoothedAverage * 0.6 + normalizedAverage * 0.4
-        smoothedPeak = smoothedPeak * 0.6 + normalizedPeak * 0.4
-        let newAudioMeter = AudioMeter(averagePower: Double(smoothedAverage), peakPower: Double(smoothedPeak))
-        smoothedValuesLock.unlock()
-
-        // Dispatch to main queue for UI updates (more efficient than Task)
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.audioMeter = newAudioMeter
+            self?.voiceLevels = levels
         }
     }
     
@@ -341,7 +311,3 @@ class Recorder: NSObject, ObservableObject {
     }
 }
 
-struct AudioMeter: Equatable {
-    let averagePower: Double
-    let peakPower: Double
-}

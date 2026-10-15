@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import os
 import SwiftUI
@@ -29,8 +30,8 @@ final class UniversalAIEditManager: ObservableObject {
     @Published private(set) var statusText: String?
     @Published private(set) var lastResult: UniversalAIEditResult?
     @Published private(set) var isVoiceRecording = false
-    @Published private(set) var voiceMeterLevel: Double = 0
-    @Published private(set) var voiceMeterSamples: [Double] = []
+    /// Live input levels while recording the instruction, newest last. See `VoiceLevelHistory`.
+    @Published private(set) var voiceLevels: [Double] = VoiceLevelHistory().levels
     @Published private(set) var shouldFocusInstructionOnAppear = true
     @Published private(set) var instructionFocusRequest = 0
     @Published private(set) var promptTemplates: [UniversalAIEditPromptTemplate] = UniversalAIEditPromptTemplateStore.load()
@@ -41,7 +42,7 @@ final class UniversalAIEditManager: ObservableObject {
     private var instructionAudioURL: URL?
     private var panel: UniversalAIEditPanel?
     private var hostingController: NSHostingController<UniversalAIEditPanelView>?
-    private var voiceMeterTask: Task<Void, Never>?
+    private var voiceLevelsSubscription: AnyCancellable?
     private weak var engine: VoiceInkEngine?
     private var targetApp: NSRunningApplication?
     private var currentHistoryRecord: AIEditHistoryRecord?
@@ -1103,30 +1104,14 @@ final class UniversalAIEditManager: ObservableObject {
     }
 
     private func startVoiceMetering() {
-        voiceMeterTask?.cancel()
-        voiceMeterSamples = []
-        voiceMeterLevel = 0
-
-        voiceMeterTask = Task { @MainActor [weak self] in
-            while let self, !Task.isCancelled, self.isVoiceRecording {
-                let level = min(1, max(0, self.instructionRecorder.audioMeter.peakPower))
-                self.voiceMeterLevel = level
-                self.voiceMeterSamples.append(level)
-                if self.voiceMeterSamples.count > 40 {
-                    self.voiceMeterSamples.removeFirst(self.voiceMeterSamples.count - 40)
-                }
-
-                try? await Task.sleep(nanoseconds: 80_000_000)
-            }
-        }
+        voiceLevelsSubscription = instructionRecorder.$voiceLevels
+            .sink { [weak self] levels in self?.voiceLevels = levels }
     }
 
     private func stopVoiceMetering(reset: Bool) {
-        voiceMeterTask?.cancel()
-        voiceMeterTask = nil
+        voiceLevelsSubscription = nil
         if reset {
-            voiceMeterLevel = 0
-            voiceMeterSamples = []
+            voiceLevels = VoiceLevelHistory().levels
         }
     }
 
